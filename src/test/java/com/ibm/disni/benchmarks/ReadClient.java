@@ -34,6 +34,10 @@ import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
 import java.util.LinkedList;
 
+/**
+ * DISNI Benchmark ReadClient 客户端程序
+ * java -cp disni-1.6-jar-with-dependencies.jar:disni-1.6-tests.jar com.ibm.disni.benchmarks.ReadClient -a 10.10.0.25 -s 64 -k 1000000
+ */
 public class ReadClient implements RdmaEndpointFactory<ReadClient.ReadClientEndpoint> {
 	private RdmaPassiveEndpointGroup<ReadClientEndpoint> group;
 	private String host;

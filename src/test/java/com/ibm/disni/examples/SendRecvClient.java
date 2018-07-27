@@ -35,7 +35,10 @@ import java.nio.ByteBuffer;
 import java.util.LinkedList;
 import java.util.concurrent.ArrayBlockingQueue;
 
-
+/**
+ *  DISNI Example SendRecvClient 客户端程序
+ *  java -cp disni-1.6-jar-with-dependencies.jar:disni-1.6-tests.jar com.ibm.disni.examples.SendRecvClient -a 10.10.0.25
+ */
 public class SendRecvClient implements RdmaEndpointFactory<SendRecvClient.CustomClientEndpoint> {
 	RdmaActiveEndpointGroup<SendRecvClient.CustomClientEndpoint> endpointGroup;
 	private String host;
