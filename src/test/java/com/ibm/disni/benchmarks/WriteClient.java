@@ -35,18 +35,18 @@ import java.nio.ByteBuffer;
 import java.util.LinkedList;
 
 /**
- * DISNI Benchmark ReadClient 客户端程序
- * java -cp disni-1.6-jar-with-dependencies.jar:disni-1.6-tests.jar com.ibm.disni.benchmarks.ReadClient -a 10.10.0.25 -s 64 -k 1000
+ * DISNI Benchmark WriteClient 客户端程序
+ * java -cp disni-1.6-jar-with-dependencies.jar:disni-1.6-tests.jar com.ibm.disni.benchmarks.WriteClient -a 10.10.0.25 -s 64 -k 1000
  */
-public class ReadClient implements RdmaEndpointFactory<ReadClient.ReadClientEndpoint> {
-	private RdmaPassiveEndpointGroup<ReadClientEndpoint> group;
+public class WriteClient implements RdmaEndpointFactory<WriteClient.WriteClientEndpoint> {
+	private RdmaPassiveEndpointGroup<WriteClientEndpoint> group;
 	private String host;
 	private int port;
 	private int size;
 	private int loop;
 
-	public ReadClient(String host, int port, int size, int loop) throws IOException{
-		this.group = new RdmaPassiveEndpointGroup<ReadClient.ReadClientEndpoint>(1, 10, 4, 40);
+	public WriteClient(String host, int port, int size, int loop) throws IOException{
+		this.group = new RdmaPassiveEndpointGroup<WriteClient.WriteClientEndpoint>(1, 10, 4, 40);
 		this.group.init(this);
 		this.host = host;
 		this.port = port;
@@ -54,19 +54,19 @@ public class ReadClient implements RdmaEndpointFactory<ReadClient.ReadClientEndp
 		this.loop = loop;
 	}
 
-	public ReadClient.ReadClientEndpoint createEndpoint(RdmaCmId id, boolean serverSide)
+	public WriteClient.WriteClientEndpoint createEndpoint(RdmaCmId id, boolean serverSide)
 			throws IOException {
-		return new ReadClientEndpoint(group, id, serverSide, size);
+		return new WriteClientEndpoint(group, id, serverSide, size);
 	}
 
 	private void run() throws Exception {
-		System.out.println("ReadClient, size " + size + ", loop " + loop);
+		System.out.println("WriteClient, size " + size + ", loop " + loop);
 
-		ReadClient.ReadClientEndpoint endpoint = group.createEndpoint();
+		WriteClient.WriteClientEndpoint endpoint = group.createEndpoint();
  		InetAddress ipAddress = InetAddress.getByName(host);
  		InetSocketAddress address = new InetSocketAddress(ipAddress, port);		
 		endpoint.connect(address, 1000);
-		System.out.println("ReadClient, client connected, address " + host + ", port " + port);
+		System.out.println("WriteClient, client connected, address " + host + ", port " + port);
 
 		//in our custom endpoints we make sure CQ events get stored in a queue, we now query that queue for new CQ events.
 		//in this case a new CQ event means we have received some data, i.e., a message from the server
@@ -79,14 +79,14 @@ public class ReadClient implements RdmaEndpointFactory<ReadClient.ReadClientEndp
 		int length = recvBuf.getInt();
 		int lkey = recvBuf.getInt();
 		recvBuf.clear();
-		System.out.println("ReadClient, receiving rdma information, addr " + addr + ", length " + length + ", key " + lkey);
-		System.out.println("ReadClient, preparing read operation...");
+		System.out.println("WriteClient, receiving rdma information, addr " + addr + ", length " + length + ", key " + lkey);
+		System.out.println("WriteClient, preparing read operation...");
 
 		//the RDMA information above identifies a RDMA buffer at the server side
 		//let's issue a one-sided RDMA read opeation to fetch the content from that buffer
 		IbvSendWR sendWR = endpoint.getSendWR();
 		sendWR.setWr_id(1001);
-		sendWR.setOpcode(IbvSendWR.IBV_WR_RDMA_READ);
+		sendWR.setOpcode(IbvSendWR.IBV_WR_RDMA_WRITE);
 		sendWR.setSend_flags(IbvSendWR.IBV_SEND_SIGNALED);
 		sendWR.getRdma().setRemote_addr(addr);
 		sendWR.getRdma().setRkey(lkey);
@@ -101,7 +101,7 @@ public class ReadClient implements RdmaEndpointFactory<ReadClient.ReadClientEndp
 		}
 		long end = System.nanoTime();
 		long duration = end - start;
-		long latency = duration / loop / 1000;
+		double latency = duration / loop ;
 
 
 		//let's prepare a final message to signal everything went fine
@@ -119,11 +119,11 @@ public class ReadClient implements RdmaEndpointFactory<ReadClient.ReadClientEndp
 		endpoint.close();
 		group.close();
 
-		System.out.println("ReadClient, latency " + latency);
+		System.out.println("WriteClient, latency " + latency);
 	}
 
 	public static void main(String[] args) throws Exception {
-		RdmaBenchmarkCmdLine cmdLine = new RdmaBenchmarkCmdLine("ReadClient");
+		RdmaBenchmarkCmdLine cmdLine = new RdmaBenchmarkCmdLine("WriteClient");
 		try {
 			cmdLine.parse(args);
 		} catch (ParseException e) {
@@ -131,11 +131,11 @@ public class ReadClient implements RdmaEndpointFactory<ReadClient.ReadClientEndp
 			System.exit(-1);
 		}
 
-		ReadClient client = new ReadClient(cmdLine.getIp(), cmdLine.getPort(), cmdLine.getSize(), cmdLine.getLoop());
+		WriteClient client = new WriteClient(cmdLine.getIp(), cmdLine.getPort(), cmdLine.getSize(), cmdLine.getLoop());
 		client.run();
 	}
 
-	public static class ReadClientEndpoint extends RdmaEndpoint {
+	public static class WriteClientEndpoint extends RdmaEndpoint {
 		private ByteBuffer buffers[];
 		private IbvMr mrlist[];
 		private int buffersize;
@@ -159,7 +159,7 @@ public class ReadClient implements RdmaEndpointFactory<ReadClient.ReadClientEndp
 		private IbvWC[] wcList;
 		private SVCPollCq poll;
 
-		protected ReadClientEndpoint(RdmaEndpointGroup<? extends RdmaEndpoint> group, RdmaCmId idPriv, boolean serverSide, int size) throws IOException {
+		protected WriteClientEndpoint(RdmaEndpointGroup<? extends RdmaEndpoint> group, RdmaCmId idPriv, boolean serverSide, int size) throws IOException {
 			super(group, idPriv, serverSide);
 
 			this.buffersize = size;
