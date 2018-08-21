@@ -36,6 +36,11 @@ import java.nio.ByteBuffer;
 import java.util.LinkedList;
 import java.util.concurrent.ArrayBlockingQueue;
 
+/**
+ * DISNI Example ReadServer 服务器程序
+ * java -cp disni-1.6-jar-with-dependencies.jar:disni-1.6-tests.jar com.ibm.disni.examples.ReadServer -a 10.10.0.25
+ * 2.为自定义的CustomClientEndpoint 实现工厂类RdmaEndpointFactory
+ */
 public class ReadServer implements RdmaEndpointFactory<ReadServer.CustomServerEndpoint> {
 	private RdmaActiveEndpointGroup<ReadServer.CustomServerEndpoint> endpointGroup;
 	private String host;
@@ -45,6 +50,7 @@ public class ReadServer implements RdmaEndpointFactory<ReadServer.CustomServerEn
 		return new ReadServer.CustomServerEndpoint(endpointGroup, idPriv, serverSide);
 	}
 
+	//3.在服务器上，分配EndPoint Group并使用工厂Factory初始化它，创建服务器端点，绑定它并接受连接
 	public void run() throws Exception {
 		//create a EndpointGroup. The RdmaActiveEndpointGroup contains CQ processing and delivers CQ event to the endpoint.dispatchCqEvent() method.
 		endpointGroup = new RdmaActiveEndpointGroup<CustomServerEndpoint>(1000, false, 128, 4, 128);
@@ -76,12 +82,12 @@ public class ReadServer implements RdmaEndpointFactory<ReadServer.CustomServerEn
 
 		//post the operation to send the message
 		System.out.println("ReadServer::sending message");
-		endpoint.postSend(endpoint.getWrList_send()).execute().free();
+		endpoint.sendMessage();
 		//we have to wait for the CQ event, only then we know the message has been sent out
-		endpoint.getWcEvents().take();
+		endpoint.takeEvent();
 
 		//let's wait for the final message to be received. We don't need to check the message itself, just the CQ event is enough.
-		endpoint.getWcEvents().take();
+		endpoint.takeEvent();
 		System.out.println("ReadServer::final message");
 
 		//close everything
@@ -110,6 +116,9 @@ public class ReadServer implements RdmaEndpointFactory<ReadServer.CustomServerEn
 		simpleServer.launch(args);
 	}
 
+	/**
+	 * 1.通过继承RdmaActiveEndpoint来自定义您自己的Endpoint
+	 */
 	public static class CustomServerEndpoint extends RdmaActiveEndpoint {
 		private ByteBuffer buffers[];
 		private IbvMr mrlist[];
@@ -243,6 +252,23 @@ public class ReadServer implements RdmaEndpointFactory<ReadServer.CustomServerEn
 
 		public IbvMr getRecvMr() {
 			return recvMr;
+		}
+
+		/**
+		 * 发送消息
+		 * @throws IOException
+		 */
+		public void sendMessage() throws IOException {
+			this.postSend(wrList_send).execute().free();
+		}
+
+		/**
+		 * 从Complete Queue从取出时间(阻塞方法)
+		 * @return
+		 * @throws InterruptedException
+		 */
+		public IbvWC takeEvent() throws InterruptedException{
+			return wcEvents.take();
 		}
 	}
 

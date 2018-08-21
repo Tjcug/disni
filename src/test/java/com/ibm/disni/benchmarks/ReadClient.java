@@ -35,8 +35,8 @@ import java.nio.ByteBuffer;
 import java.util.LinkedList;
 
 /**
- * DISNI Benchmark ReadClient 客户端程序
- * java -cp disni-1.6-jar-with-dependencies.jar:disni-1.6-tests.jar com.ibm.disni.benchmarks.ReadClient -a 10.10.0.25 -s 64 -k 1000
+ * DISNI Benchmark RdmaPassiveReadClient 客户端程序
+ * java -cp disni-1.6-jar-with-dependencies.jar:disni-1.6-tests.jar com.ibm.disni.benchmarks.RdmaPassiveReadClient -a 10.10.0.25 -s 64 -k 1000
  */
 public class ReadClient implements RdmaEndpointFactory<ReadClient.ReadClientEndpoint> {
 	private RdmaPassiveEndpointGroup<ReadClientEndpoint> group;
@@ -60,13 +60,13 @@ public class ReadClient implements RdmaEndpointFactory<ReadClient.ReadClientEndp
 	}
 
 	private void run() throws Exception {
-		System.out.println("ReadClient, size " + size + ", loop " + loop);
+		System.out.println("RdmaPassiveReadClient, size " + size + ", loop " + loop);
 
 		ReadClient.ReadClientEndpoint endpoint = group.createEndpoint();
  		InetAddress ipAddress = InetAddress.getByName(host);
  		InetSocketAddress address = new InetSocketAddress(ipAddress, port);		
 		endpoint.connect(address, 1000);
-		System.out.println("ReadClient, client connected, address " + host + ", port " + port);
+		System.out.println("RdmaPassiveReadClient, client connected, address " + host + ", port " + port);
 
 		//in our custom endpoints we make sure CQ events get stored in a queue, we now query that queue for new CQ events.
 		//in this case a new CQ event means we have received some data, i.e., a message from the server
@@ -79,8 +79,8 @@ public class ReadClient implements RdmaEndpointFactory<ReadClient.ReadClientEndp
 		int length = recvBuf.getInt();
 		int lkey = recvBuf.getInt();
 		recvBuf.clear();
-		System.out.println("ReadClient, receiving rdma information, addr " + addr + ", length " + length + ", key " + lkey);
-		System.out.println("ReadClient, preparing read operation...");
+		System.out.println("RdmaPassiveReadClient, receiving rdma information, addr " + addr + ", length " + length + ", key " + lkey);
+		System.out.println("RdmaPassiveReadClient, preparing read operation...");
 
 		//the RDMA information above identifies a RDMA buffer at the server side
 		//let's issue a one-sided RDMA read opeation to fetch the content from that buffer
@@ -119,11 +119,11 @@ public class ReadClient implements RdmaEndpointFactory<ReadClient.ReadClientEndp
 		endpoint.close();
 		group.close();
 
-		System.out.println("ReadClient, latency " + latency);
+		System.out.println("RdmaPassiveReadClient, latency " + latency);
 	}
 
 	public static void main(String[] args) throws Exception {
-		RdmaBenchmarkCmdLine cmdLine = new RdmaBenchmarkCmdLine("ReadClient");
+		RdmaBenchmarkCmdLine cmdLine = new RdmaBenchmarkCmdLine("RdmaPassiveReadClient");
 		try {
 			cmdLine.parse(args);
 		} catch (ParseException e) {

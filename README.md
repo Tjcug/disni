@@ -24,7 +24,7 @@ Common steps:
 ### RDMA example
 1. Make sure the RDMA network interface is configured and up on the test machines (run ibv\_devices to see the list of RDMA NICs). If your machine does not have RDMA hardware, you can also use SoftiWARP from [Github](https://github.com/zrlio/softiwarp). 
 2. Run the server\: java com.ibm.disni.examples.ReadServer -a \<server IP\>
-3. Run the client\: java com.ibm.disni.examples.ReadClient -a \<server IP\>
+3. Run the client\: java com.ibm.disni.examples.RdmaPassiveReadClient -a \<server IP\>
 
 ## Programming with DiSNI
 
