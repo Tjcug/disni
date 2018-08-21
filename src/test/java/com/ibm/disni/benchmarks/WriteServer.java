@@ -68,9 +68,18 @@ public class WriteServer implements RdmaEndpointFactory<WriteServer.WriteServerE
 		WriteServer.WriteServerEndpoint endpoint = serverEndpoint.accept();
 		System.out.println("WriteServer, client connected, address " + address.toString());
 
-		//let's send a message to the client
+		//let's prepare a message to be sent to the client
 		//in the message we include the RDMA information of a local buffer which we allow the client to read using a one-sided RDMA operation
-		System.out.println("WriteServer, sending message");
+		ByteBuffer sendBuf = endpoint.getSendBuf();
+		IbvMr dataMr = endpoint.getDataMr();
+
+		sendBuf.putLong(dataMr.getAddr());
+		sendBuf.putInt(dataMr.getLength());
+		sendBuf.putInt(dataMr.getLkey());
+		sendBuf.clear();
+
+		//post the operation to send the message
+		System.out.println("WriteServer::sending target address");
 		endpoint.sendMessage();
 		//we have to wait for the CQ event, only then we know the message has been sent out
 		endpoint.takeEvent();
@@ -78,6 +87,11 @@ public class WriteServer implements RdmaEndpointFactory<WriteServer.WriteServerE
 		//let's wait for the final message to be received. We don't need to check the message itself, just the CQ event is enough.
 		endpoint.takeEvent();
 		System.out.println("WriteServer, final message");
+
+		//we should have the content of the remote buffer in our own local buffer now
+//		ByteBuffer dataBuf = endpoint.getDataBuf();
+//		dataBuf.clear();
+//		System.out.println("WriteServer::write memory from client: " + dataBuf.asCharBuffer().toString()+" "+endpoint.wcEvents.size());
 
 		//close everything
 		endpoint.close();
@@ -106,8 +120,11 @@ public class WriteServer implements RdmaEndpointFactory<WriteServer.WriteServerE
 		private IbvMr mrlist[];
 		private int buffersize;
 
+		private ByteBuffer dataBuf;
 		private IbvMr dataMr;
+		private ByteBuffer sendBuf;
 		private IbvMr sendMr;
+		private ByteBuffer recvBuf;
 		private IbvMr recvMr;
 
 		private LinkedList<IbvSendWR> wrList_send;
@@ -155,8 +172,11 @@ public class WriteServer implements RdmaEndpointFactory<WriteServer.WriteServerE
 				mrlist[i] = registerMemory(buffers[i]).execute().free().getMr();
 			}
 
+			this.dataBuf = buffers[0];
 			this.dataMr = mrlist[0];
+			this.sendBuf = buffers[1];
 			this.sendMr = mrlist[1];
+			this.recvBuf = buffers[2];
 			this.recvMr = mrlist[2];
 
 			ByteBuffer sendBuf = buffers[1];
@@ -195,5 +215,28 @@ public class WriteServer implements RdmaEndpointFactory<WriteServer.WriteServerE
 			return wcEvents.take();
 		}
 
+		public IbvMr getDataMr() {
+			return dataMr;
+		}
+
+		public void setDataMr(IbvMr dataMr) {
+			this.dataMr = dataMr;
+		}
+
+		public ByteBuffer getSendBuf() {
+			return sendBuf;
+		}
+
+		public void setSendBuf(ByteBuffer sendBuf) {
+			this.sendBuf = sendBuf;
+		}
+
+		public ByteBuffer getDataBuf() {
+			return dataBuf;
+		}
+
+		public void setDataBuf(ByteBuffer dataBuf) {
+			this.dataBuf = dataBuf;
+		}
 	}
 }

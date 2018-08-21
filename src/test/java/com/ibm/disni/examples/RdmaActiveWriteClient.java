@@ -36,21 +36,21 @@ import java.util.LinkedList;
 import java.util.concurrent.ArrayBlockingQueue;
 
 /**
- * DISNI Example RdmaActiveReadClient 客户端程序
+ * DISNI Example RdmaActiveWriteClient 客户端程序
  * RdmaActiveEndpointGroup Active模式在大量线程下更加健壮，但有较高的延迟。
- * java -cp disni-1.6-jar-with-dependencies.jar:disni-1.6-tests.jar com.ibm.disni.examples.RdmaActiveReadClient -a 10.10.0.25
+ * java -cp disni-1.6-jar-with-dependencies.jar:disni-1.6-tests.jar com.ibm.disni.examples.RdmaActiveWriteClient -a 10.10.0.25
  * 2.为自定义的CustomClientEndpoint 实现工厂类RdmaEndpointFactory
  */
-public class RdmaActiveReadClient implements RdmaEndpointFactory<RdmaActiveReadClient.CustomClientEndpoint> {
-    private RdmaActiveEndpointGroup<RdmaActiveReadClient.CustomClientEndpoint> endpointGroup;
+public class RdmaActiveWriteClient implements RdmaEndpointFactory<RdmaActiveWriteClient.CustomClientEndpoint> {
+    private RdmaActiveEndpointGroup<RdmaActiveWriteClient.CustomClientEndpoint> endpointGroup;
     private String host;
     private int port;
     private int size;
     private int loop;
 
-    public RdmaActiveReadClient(String host, int port, int size, int loop) throws IOException{
+    public RdmaActiveWriteClient(String host, int port, int size, int loop) throws IOException{
         //create a EndpointGroup. The RdmaActiveEndpointGroup contains CQ processing and delivers CQ event to the endpoint.dispatchCqEvent() method.
-        endpointGroup = new RdmaActiveEndpointGroup<RdmaActiveReadClient.CustomClientEndpoint>(1000, false, 128, 4, 128);
+        endpointGroup = new RdmaActiveEndpointGroup<RdmaActiveWriteClient.CustomClientEndpoint>(1000, false, 128, 4, 128);
         endpointGroup.init(this);
         this.host = host;
         this.port = port;
@@ -58,22 +58,23 @@ public class RdmaActiveReadClient implements RdmaEndpointFactory<RdmaActiveReadC
         this.loop = loop;
     }
 
-    public RdmaActiveReadClient.CustomClientEndpoint createEndpoint(RdmaCmId idPriv, boolean serverSide) throws IOException {
-        return new RdmaActiveReadClient.CustomClientEndpoint(endpointGroup, idPriv, serverSide , size);
+    public RdmaActiveWriteClient.CustomClientEndpoint createEndpoint(RdmaCmId idPriv, boolean serverSide) throws IOException {
+        return new RdmaActiveWriteClient.CustomClientEndpoint(endpointGroup, idPriv, serverSide, size);
     }
 
     //3.在服务器上，分配EndPoint Group并使用工厂Factory初始化它，创建服务器端点，绑定它并接受连接
     public void run() throws Exception {
+
         //we have passed our own endpoint factory to the group, therefore new endpoints will be of type CustomClientEndpoint
         //let's create a new client endpoint
-        RdmaActiveReadClient.CustomClientEndpoint endpoint = endpointGroup.createEndpoint();
+        RdmaActiveWriteClient.CustomClientEndpoint endpoint = endpointGroup.createEndpoint();
 
         //connect to the server
         InetAddress ipAddress = InetAddress.getByName(host);
         InetSocketAddress address = new InetSocketAddress(ipAddress, port);
         endpoint.connect(address, 1000);
         InetSocketAddress _addr = (InetSocketAddress) endpoint.getDstAddr();
-        System.out.println("RdmaActiveReadClient::client connected, address " + _addr.toString());
+        System.out.println("RdmaActiveWriteClient::client connected, address " + _addr.toString());
 
         //in our custom endpoints we make sure CQ events get stored in a queue, we now query that queue for new CQ events.
         //in this case a new CQ event means we have received some data, i.e., a message from the server
@@ -86,14 +87,24 @@ public class RdmaActiveReadClient implements RdmaEndpointFactory<RdmaActiveReadC
         int length = recvBuf.getInt();
         int lkey = recvBuf.getInt();
         recvBuf.clear();
-        System.out.println("RdmaActiveReadClient::receiving rdma information, addr " + addr + ", length " + length + ", key " + lkey);
-        System.out.println("RdmaActiveReadClient::preparing read operation...");
+        System.out.println("RdmaActiveWriteClient::receiving rdma information, addr " + addr + ", length " + length + ", key " + lkey);
+        System.out.println("RdmaActiveWriteClient::preparing read operation...");
 
         //the RDMA information above identifies a RDMA buffer at the server side
         //let's issue a one-sided RDMA read opeation to fetch the content from that buffer
+        ByteBuffer dataBuf = endpoint.getDataBuf();
+        ByteBuffer sendBuf = endpoint.getSendBuf();
+        IbvMr dataMr = endpoint.getDataMr();
+        dataBuf.asCharBuffer().put("This is a RDMA/write on stag " + dataMr.getLkey() + " !");
+        dataBuf.clear();
+        sendBuf.putLong(dataMr.getAddr());
+        sendBuf.putInt(dataMr.getLength());
+        sendBuf.putInt(dataMr.getLkey());
+        sendBuf.clear();
+
         IbvSendWR sendWR = endpoint.getSendWR();
         sendWR.setWr_id(1001);
-        sendWR.setOpcode(IbvSendWR.IBV_WR_RDMA_READ);
+        sendWR.setOpcode(IbvSendWR.IBV_WR_RDMA_WRITE);
         sendWR.setSend_flags(IbvSendWR.IBV_SEND_SIGNALED);
         sendWR.getRdma().setRemote_addr(addr);
         sendWR.getRdma().setRkey(lkey);
@@ -101,16 +112,13 @@ public class RdmaActiveReadClient implements RdmaEndpointFactory<RdmaActiveReadC
         //post the operation on the endpoint
         SVCPostSend postSend = endpoint.postSend(endpoint.getWrList_send());
         for (int i = 10; i <= 100; ){
-            postSend.getWrMod(0).getSgeMod(0).setLength(i);
+            System.out.println("RdmaPassiveWriteClient::sending messages");
+            //postSend.getWrMod(0).getSgeMod(0).setLength(i);
             postSend.execute();
             //wait until the operation has completed
             endpoint.getWcEvents().take();
-
-            //we should have the content of the remote buffer in our own local buffer now
-            ByteBuffer dataBuf = endpoint.getDataBuf();
-            dataBuf.clear();
-            System.out.println("RdmaActiveReadClient::read memory from server: " + dataBuf.asCharBuffer().toString());
             i += 10;
+            Thread.sleep(1000);
         }
 
         //let's prepare a final message to signal everything went fine
@@ -131,16 +139,17 @@ public class RdmaActiveReadClient implements RdmaEndpointFactory<RdmaActiveReadC
     }
 
     public static void main(String[] args) throws Exception {
-        RdmaBenchmarkCmdLine cmdLine = new RdmaBenchmarkCmdLine("RdmaPassiveReadClient");
+        RdmaBenchmarkCmdLine cmdLine = new RdmaBenchmarkCmdLine("RdmaActiveWriteClient");
         try {
             cmdLine.parse(args);
         } catch (ParseException e) {
             cmdLine.printHelp();
             System.exit(-1);
         }
-        RdmaActiveReadClient client = new RdmaActiveReadClient(cmdLine.getIp(), cmdLine.getPort(), cmdLine.getSize(), cmdLine.getLoop());
+        RdmaActiveWriteClient client = new RdmaActiveWriteClient(cmdLine.getIp(), cmdLine.getPort(), cmdLine.getSize(), cmdLine.getLoop());
         client.run();
     }
+
     /**
      * 1.通过继承RdmaActiveEndpoint来自定义您自己的Endpoint
      */
@@ -148,7 +157,7 @@ public class RdmaActiveReadClient implements RdmaEndpointFactory<RdmaActiveReadC
         private ByteBuffer buffers[];
         private IbvMr mrlist[];
         private int buffercount = 3;
-        private int buffersize = 100;
+        private int buffersize;
 
         private ByteBuffer dataBuf;
         private IbvMr dataMr;
@@ -168,7 +177,7 @@ public class RdmaActiveReadClient implements RdmaEndpointFactory<RdmaActiveReadC
 
         private ArrayBlockingQueue<IbvWC> wcEvents;
 
-        public CustomClientEndpoint(RdmaActiveEndpointGroup<? extends CustomClientEndpoint> endpointGroup, RdmaCmId idPriv, boolean isServerSide ,int size) throws IOException {
+        public CustomClientEndpoint(RdmaActiveEndpointGroup<? extends CustomClientEndpoint> endpointGroup, RdmaCmId idPriv, boolean isServerSide, int size) throws IOException {
             super(endpointGroup, idPriv, isServerSide);
             this.buffercount = 3;
             this.buffersize = size;
@@ -230,12 +239,20 @@ public class RdmaActiveReadClient implements RdmaEndpointFactory<RdmaActiveReadC
             recvWR.setWr_id(2001);
             wrList_recv.add(recvWR);
 
-            System.out.println("RdmaActiveReadClient::initiated recv");
+            System.out.println("RdmaActiveWriteClient::initiated recv");
             this.postRecv(wrList_recv).execute().free();
         }
 
         public void dispatchCqEvent(IbvWC wc) throws IOException {
             wcEvents.add(wc);
+        }
+
+        public IbvMr getDataMr() {
+            return dataMr;
+        }
+
+        public void setDataMr(IbvMr dataMr) {
+            this.dataMr = dataMr;
         }
 
         public ArrayBlockingQueue<IbvWC> getWcEvents() {

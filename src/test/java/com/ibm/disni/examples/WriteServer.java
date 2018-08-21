@@ -37,17 +37,17 @@ import java.util.LinkedList;
 import java.util.concurrent.ArrayBlockingQueue;
 
 /**
- * DISNI Example ReadServer 服务器程序
- * java -cp disni-1.6-jar-with-dependencies.jar:disni-1.6-tests.jar com.ibm.disni.examples.ReadServer -a 10.10.0.25
+ * DISNI Example WriteServer 服务器程序
+ * java -cp disni-1.6-jar-with-dependencies.jar:disni-1.6-tests.jar com.ibm.disni.examples.WriteServer -a 10.10.0.25
  * 2.为自定义的CustomClientEndpoint 实现工厂类RdmaEndpointFactory
  */
-public class ReadServer implements RdmaEndpointFactory<ReadServer.CustomServerEndpoint> {
-	private RdmaActiveEndpointGroup<ReadServer.CustomServerEndpoint> endpointGroup;
+public class WriteServer implements RdmaEndpointFactory<WriteServer.CustomServerEndpoint> {
+	private RdmaActiveEndpointGroup<WriteServer.CustomServerEndpoint> endpointGroup;
 	private String host;
 	private int port;
 
-	public ReadServer.CustomServerEndpoint createEndpoint(RdmaCmId idPriv, boolean serverSide) throws IOException {
-		return new ReadServer.CustomServerEndpoint(endpointGroup, idPriv, serverSide);
+	public WriteServer.CustomServerEndpoint createEndpoint(RdmaCmId idPriv, boolean serverSide) throws IOException {
+		return new WriteServer.CustomServerEndpoint(endpointGroup, idPriv, serverSide);
 	}
 
 	//3.在服务器上，分配EndPoint Group并使用工厂Factory初始化它，创建服务器端点，绑定它并接受连接
@@ -56,39 +56,42 @@ public class ReadServer implements RdmaEndpointFactory<ReadServer.CustomServerEn
 		endpointGroup = new RdmaActiveEndpointGroup<CustomServerEndpoint>(1000, false, 128, 4, 128);
 		endpointGroup.init(this);
 		//create a server endpoint
-		RdmaServerEndpoint<ReadServer.CustomServerEndpoint> serverEndpoint = endpointGroup.createServerEndpoint();
+		RdmaServerEndpoint<WriteServer.CustomServerEndpoint> serverEndpoint = endpointGroup.createServerEndpoint();
 
 		//we can call bind on a server endpoint, just like we do with sockets
 		InetAddress ipAddress = InetAddress.getByName(host);
-		InetSocketAddress address = new InetSocketAddress(ipAddress, port);		
+		InetSocketAddress address = new InetSocketAddress(ipAddress, port);
 		serverEndpoint.bind(address, 10);
-		System.out.println("ReadServer::server bound to address" + address.toString());
+		System.out.println("WriteServer::server bound to address" + address.toString());
 
 		//we can accept new connections
-		ReadServer.CustomServerEndpoint endpoint = serverEndpoint.accept();
-		System.out.println("ReadServer::connection accepted ");
+		WriteServer.CustomServerEndpoint endpoint = serverEndpoint.accept();
+		System.out.println("WriteServer::connection accepted ");
 
 		//let's prepare a message to be sent to the client
 		//in the message we include the RDMA information of a local buffer which we allow the client to read using a one-sided RDMA operation
-		ByteBuffer dataBuf = endpoint.getDataBuf();
 		ByteBuffer sendBuf = endpoint.getSendBuf();
 		IbvMr dataMr = endpoint.getDataMr();
-		dataBuf.asCharBuffer().put("This is a RDMA/read on stag " + dataMr.getLkey() + " !");
-		dataBuf.clear();
+
 		sendBuf.putLong(dataMr.getAddr());
 		sendBuf.putInt(dataMr.getLength());
 		sendBuf.putInt(dataMr.getLkey());
 		sendBuf.clear();
 
 		//post the operation to send the message
-		System.out.println("ReadServer::sending message");
+		System.out.println("WriteServer::sending target address");
 		endpoint.sendMessage();
 		//we have to wait for the CQ event, only then we know the message has been sent out
 		endpoint.takeEvent();
 
 		//let's wait for the final message to be received. We don't need to check the message itself, just the CQ event is enough.
 		endpoint.takeEvent();
-		System.out.println("ReadServer::final message");
+		System.out.println("WriteServer::final message");
+
+		//we should have the content of the remote buffer in our own local buffer now
+		ByteBuffer dataBuf = endpoint.getDataBuf();
+		dataBuf.clear();
+		System.out.println("WriteServer::write memory from client: " + dataBuf.asCharBuffer().toString()+" "+endpoint.wcEvents.size());
 
 		//close everything
 		endpoint.close();
@@ -97,7 +100,7 @@ public class ReadServer implements RdmaEndpointFactory<ReadServer.CustomServerEn
 	}
 
 	public void launch(String[] args) throws Exception {
-		CmdLineCommon cmdLine = new CmdLineCommon("ReadServer");
+		CmdLineCommon cmdLine = new CmdLineCommon("WriteServer");
 
 		try {
 			cmdLine.parse(args);
@@ -112,7 +115,7 @@ public class ReadServer implements RdmaEndpointFactory<ReadServer.CustomServerEn
 	}
 
 	public static void main(String[] args) throws Exception {
-		ReadServer simpleServer = new ReadServer();
+		WriteServer simpleServer = new WriteServer();
 		simpleServer.launch(args);
 	}
 
@@ -255,17 +258,17 @@ public class ReadServer implements RdmaEndpointFactory<ReadServer.CustomServerEn
 		}
 
 		/**
-		 * 发送消息
+         * 发送消息
 		 * @throws IOException
 		 */
 		public void sendMessage() throws IOException {
 			this.postSend(wrList_send).execute().free();
 		}
 
-		/**
-		 * 从Complete Queue从取出时间(阻塞方法)
+        /**
+         * 从Complete Queue从取出时间(阻塞方法)
 		 * @return
-		 * @throws InterruptedException
+         * @throws InterruptedException
 		 */
 		public IbvWC takeEvent() throws InterruptedException{
 			return wcEvents.take();

@@ -37,7 +37,7 @@ import java.util.LinkedList;
 
 /**
  * DISNI Example RdmaPassiveReadClient 客户端程序
- * RdmaPassiveEndpointGroup 被动模式提供了一个轮询接口,允许应用程序直接从网络队列（完成队列）中获取完成事件。因此，被动模式通常具有较低的等待时间，但是在大量线程在同一连接上操作的情况下可能遭受争用。
+ * RdmaPassiveEndpointGroup 被动模式提供了一个轮询接口,允许应用程序直接从网络队列（完成队列）中获取完成事件。因此，被动模式通常具有较低的等待时间，但是在大量线程在同一连接上操作的情况下可能遭受争用。通常，在服务器上使用ActiveEndPoint以及在客户端使用PassiveEndPoint连接是最佳选择。如果应用程序知道何时将接收消息，则PassiveEndPoint通常是正确的选择，因此可以相应地轮询完成队列。
  * java -cp disni-1.6-jar-with-dependencies.jar:disni-1.6-tests.jar com.ibm.disni.examples.RdmaPassiveReadClient -a 10.10.0.25
  * 2.为自定义的CustomClientEndpoint 实现工厂类RdmaEndpointFactory
  */
@@ -58,7 +58,7 @@ public class RdmaPassiveReadClient implements RdmaEndpointFactory<RdmaPassiveRea
 	}
 
 	public RdmaPassiveReadClient.CustomClientEndpoint createEndpoint(RdmaCmId idPriv, boolean serverSide) throws IOException {
-		return new RdmaPassiveReadClient.CustomClientEndpoint(endpointGroup, idPriv, serverSide);
+		return new RdmaPassiveReadClient.CustomClientEndpoint(endpointGroup, idPriv, serverSide ,size);
 	}
 
 	/**
@@ -154,7 +154,7 @@ public class RdmaPassiveReadClient implements RdmaEndpointFactory<RdmaPassiveRea
 		private ByteBuffer buffers[];
 		private IbvMr mrlist[];
 		private int buffercount = 3;
-		private int buffersize = 100;
+		private int buffersize;
 
 		private ByteBuffer dataBuf;
 		private IbvMr dataMr;
@@ -176,10 +176,10 @@ public class RdmaPassiveReadClient implements RdmaEndpointFactory<RdmaPassiveRea
 		private IbvWC[] wcEvents;
 		private SVCPollCq poll;
 
-		public CustomClientEndpoint(RdmaEndpointGroup<? extends RdmaEndpoint> endpointGroup, RdmaCmId idPriv, boolean isServerSide) throws IOException {
+		public CustomClientEndpoint(RdmaEndpointGroup<? extends RdmaEndpoint> endpointGroup, RdmaCmId idPriv, boolean isServerSide, int size) throws IOException {
 			super(endpointGroup, idPriv, isServerSide);
 			this.buffercount = 3;
-			this.buffersize = 100;
+			this.buffersize = size;
 			buffers = new ByteBuffer[buffercount];
 			this.mrlist = new IbvMr[buffercount];
 
