@@ -21,7 +21,7 @@
 
 package com.ibm.disni.examples;
 
-import com.ibm.disni.CmdLineCommon;
+import com.ibm.disni.benchmarks.RdmaBenchmarkCmdLine;
 import com.ibm.disni.rdma.RdmaActiveEndpoint;
 import com.ibm.disni.rdma.RdmaActiveEndpointGroup;
 import com.ibm.disni.rdma.RdmaEndpointFactory;
@@ -45,16 +45,25 @@ public class WriteServer implements RdmaEndpointFactory<WriteServer.CustomServer
 	private RdmaActiveEndpointGroup<WriteServer.CustomServerEndpoint> endpointGroup;
 	private String host;
 	private int port;
+	private int size;
+	private int loop;
+
+	public WriteServer(String host, int port, int size, int loop) throws IOException{
+		//create a EndpointGroup. The RdmaActiveEndpointGroup contains CQ processing and delivers CQ event to the endpoint.dispatchCqEvent() method.
+		endpointGroup = new RdmaActiveEndpointGroup<CustomServerEndpoint>(1000, false, 128, 4, 128);
+		endpointGroup.init(this);
+		this.host = host;
+		this.port = port;
+		this.size = size;
+		this.loop = loop;
+	}
 
 	public WriteServer.CustomServerEndpoint createEndpoint(RdmaCmId idPriv, boolean serverSide) throws IOException {
-		return new WriteServer.CustomServerEndpoint(endpointGroup, idPriv, serverSide);
+		return new WriteServer.CustomServerEndpoint(endpointGroup, idPriv, serverSide, size);
 	}
 
 	//3.在服务器上，分配EndPoint Group并使用工厂Factory初始化它，创建服务器端点，绑定它并接受连接
 	public void run() throws Exception {
-		//create a EndpointGroup. The RdmaActiveEndpointGroup contains CQ processing and delivers CQ event to the endpoint.dispatchCqEvent() method.
-		endpointGroup = new RdmaActiveEndpointGroup<CustomServerEndpoint>(1000, false, 128, 4, 128);
-		endpointGroup.init(this);
 		//create a server endpoint
 		RdmaServerEndpoint<WriteServer.CustomServerEndpoint> serverEndpoint = endpointGroup.createServerEndpoint();
 
@@ -99,24 +108,17 @@ public class WriteServer implements RdmaEndpointFactory<WriteServer.CustomServer
 		endpointGroup.close();
 	}
 
-	public void launch(String[] args) throws Exception {
-		CmdLineCommon cmdLine = new CmdLineCommon("WriteServer");
-
+	public static void main(String[] args) throws Exception {
+		RdmaBenchmarkCmdLine cmdLine = new RdmaBenchmarkCmdLine("WriteServer");
 		try {
 			cmdLine.parse(args);
 		} catch (ParseException e) {
 			cmdLine.printHelp();
 			System.exit(-1);
 		}
-		host = cmdLine.getIp();
-		port = cmdLine.getPort();
 
-		this.run();
-	}
-
-	public static void main(String[] args) throws Exception {
-		WriteServer simpleServer = new WriteServer();
-		simpleServer.launch(args);
+		WriteServer server = new WriteServer(cmdLine.getIp(), cmdLine.getPort(), cmdLine.getSize(), cmdLine.getLoop());
+		server.run();
 	}
 
 	/**
@@ -126,7 +128,7 @@ public class WriteServer implements RdmaEndpointFactory<WriteServer.CustomServer
 		private ByteBuffer buffers[];
 		private IbvMr mrlist[];
 		private int buffercount = 3;
-		private int buffersize = 64;
+		private int buffersize;
 
 		private ByteBuffer dataBuf;
 		private IbvMr dataMr;
@@ -147,10 +149,10 @@ public class WriteServer implements RdmaEndpointFactory<WriteServer.CustomServer
 
 		private ArrayBlockingQueue<IbvWC> wcEvents;
 
-		public CustomServerEndpoint(RdmaActiveEndpointGroup<CustomServerEndpoint> endpointGroup, RdmaCmId idPriv, boolean serverSide) throws IOException {
+		public CustomServerEndpoint(RdmaActiveEndpointGroup<CustomServerEndpoint> endpointGroup, RdmaCmId idPriv, boolean serverSide , int size) throws IOException {
 			super(endpointGroup, idPriv, serverSide);
 			this.buffercount = 3;
-			this.buffersize = 100;
+			this.buffersize = size;
 			buffers = new ByteBuffer[buffercount];
 			this.mrlist = new IbvMr[buffercount];
 

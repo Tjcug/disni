@@ -9,7 +9,7 @@ public class RdmaBenchmarkCmdLine extends CmdLineCommon {
 
 	private static final String SIZE_KEY = "s";
 	private int size;
-	private static final int SIZE_DEFAULT = 32;
+	private static final int SIZE_DEFAULT = 100;
 
 	private static final String LOOP_KEY = "k";
 	private int loop;
