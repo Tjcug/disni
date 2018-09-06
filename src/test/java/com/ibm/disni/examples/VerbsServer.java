@@ -22,6 +22,7 @@
 package com.ibm.disni.examples;
 
 import com.ibm.disni.CmdLineCommon;
+import com.ibm.disni.channel.VerbsTools;
 import com.ibm.disni.rdma.verbs.*;
 import org.apache.commons.cli.ParseException;
 
@@ -30,6 +31,9 @@ import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
 import java.util.LinkedList;
 
+/**
+ * java -cp disni-1.6-jar-with-dependencies.jar:disni-1.6-tests.jar com.ibm.disni.examples.VerbsServer -a 10.10.0.25
+ */
 public class VerbsServer {
 	private String ipAddress;
 	private int port;
@@ -196,7 +200,7 @@ public class VerbsServer {
 
 		LinkedList<IbvRecvWR> wrList_recv = new LinkedList<IbvRecvWR>();
 
-		//let's preopare some work requests for receiving
+		//let's prepare some work requests for receiving
 		IbvSge sgeRecv = new IbvSge();
 		sgeRecv.setAddr(recvMr.getAddr());
 		sgeRecv.setLength(recvMr.getLength());

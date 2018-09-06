@@ -24,7 +24,6 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
-import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
@@ -39,18 +38,19 @@ public class RdmaNode {
   private final RdmaShuffleConf conf;
   private final ConcurrentHashMap<InetSocketAddress, RdmaChannel> activeRdmaChannelMap =
     new ConcurrentHashMap<>();
-  private final ConcurrentHashMap<InetSocketAddress, RdmaChannel> passiveRdmaChannelMap =
+  public final ConcurrentHashMap<InetSocketAddress, RdmaChannel> passiveRdmaChannelMap =
     new ConcurrentHashMap<>();
+
+  public final ConcurrentHashMap<String, InetSocketAddress> passiveRdmaInetSocketMap =
+          new ConcurrentHashMap<>();
+
   private RdmaBufferManager rdmaBufferManager = null;
-  private RdmaCmId listenerRdmaCmId;
-  private RdmaEventChannel cmChannel;
+  private RdmaCmId listenerRdmaCmId;//通信Channel ID
+  private RdmaEventChannel cmChannel;//RDMA EventChannel
   private final AtomicBoolean runThread = new AtomicBoolean(false);
   private Thread listeningThread;
-  private IbvPd ibvPd;
+  private IbvPd ibvPd;// ibv 保护域 用来注册内存用
   private InetSocketAddress localInetSocketAddress;
-  private InetAddress driverInetAddress;
-  private final ArrayList<Integer> cpuArrayList = new ArrayList<>();
-  private int cpuIndex = 0;
 
   private static final ExecutorService executorService = Executors.newCachedThreadPool();;
   public RdmaNode(String hostName, boolean isClient, final RdmaShuffleConf conf,
@@ -58,8 +58,6 @@ public class RdmaNode {
     this.conf = conf;
 
     try {
-      driverInetAddress = InetAddress.getByName(conf.serverHost());
-
       cmChannel = RdmaEventChannel.createEventChannel();
       if (this.cmChannel == null) {
         throw new IOException("Unable to allocate RDMA Event Channel");
@@ -71,7 +69,9 @@ public class RdmaNode {
       }
 
       int err = 0;
-      int bindPort = isClient ? conf.clientPort() : conf.serverPort();
+      int bindPort = conf.getPort();
+
+      //RdmaCmId 绑定到本地InetAddress
       for (int i = 0; i < conf.portMaxRetries(); i++) {
         err = listenerRdmaCmId.bindAddr(
           new InetSocketAddress(InetAddress.getByName(hostName), bindPort));
@@ -99,6 +99,7 @@ public class RdmaNode {
         throw new IOException("Failed to create PD");
       }
 
+      //创建一个RDMA
       this.rdmaBufferManager = new RdmaBufferManager(ibvPd, isClient, conf);
     } catch (IOException e) {
       logger.error("Failed in RdmaNode constructor");
@@ -136,6 +137,7 @@ public class RdmaNode {
                   inetSocketAddress + ", which already has an older connection in error state." +
                   " Removing the old connection and creating a new one");
                 passiveRdmaChannelMap.remove(inetSocketAddress);
+                passiveRdmaInetSocketMap.remove(inetSocketAddress.getHostName());
                 rdmaChannel.stop();
               } else {
                 logger.warn("Received a redundant RDMA connection request from " +
@@ -146,13 +148,8 @@ public class RdmaNode {
             }
 
             RdmaChannel.RdmaChannelType rdmaChannelType;
-            if (driverInetAddress.equals(inetSocketAddress.getAddress()) ||
-                driverInetAddress.equals(localInetSocketAddress.getAddress())) {
-              // RPC communication is limited to driver<->executor only
-              rdmaChannelType = RdmaChannel.RdmaChannelType.RPC_RESPONDER;
-            } else {
-              rdmaChannelType = RdmaChannel.RdmaChannelType.RDMA_READ_RESPONDER;
-            }
+            rdmaChannelType = RdmaChannel.RdmaChannelType.RDMA_READ_RESPONDER;
+            //rdmaChannelType = RdmaChannel.RdmaChannelType.RPC_RESPONDER;
 
             rdmaChannel = new RdmaChannel(rdmaChannelType, conf, rdmaBufferManager, receiveListener,
               cmId, getNextCpuVector());
@@ -161,12 +158,14 @@ public class RdmaNode {
               rdmaChannel.stop();
               continue;
             }
+            passiveRdmaInetSocketMap.put(inetSocketAddress.getAddress().getHostAddress(),inetSocketAddress);
 
             try {
               rdmaChannel.accept();
             } catch (IOException ioe) {
               logger.error("Error in accept call on a passive RdmaChannel: " + ioe);
               passiveRdmaChannelMap.remove(inetSocketAddress);
+              passiveRdmaInetSocketMap.remove(inetSocketAddress.getAddress().getHostAddress());
               rdmaChannel.stop();
             }
           } else if (eventType == RdmaCmEvent.EventType.RDMA_CM_EVENT_ESTABLISHED.ordinal()) {
@@ -182,12 +181,14 @@ public class RdmaNode {
                 ", with a local connection in error state. Removing the old connection and " +
                 "aborting");
               passiveRdmaChannelMap.remove(inetSocketAddress);
+              passiveRdmaInetSocketMap.remove(inetSocketAddress.getAddress().getHostAddress());
               rdmaChannel.stop();
             } else {
               rdmaChannel.finalizeConnection();
             }
           } else if (eventType == RdmaCmEvent.EventType.RDMA_CM_EVENT_DISCONNECTED.ordinal()) {
             RdmaChannel rdmaChannel = passiveRdmaChannelMap.remove(inetSocketAddress);
+            passiveRdmaInetSocketMap.remove(inetSocketAddress.getAddress().getHostAddress());
             if (rdmaChannel == null) {
               logger.info("Received an RDMA CM Disconnect Event from " + inetSocketAddress +
                 ", which has no local matching connection. Ignoring");
@@ -230,14 +231,10 @@ public class RdmaNode {
     do {
       rdmaChannel = activeRdmaChannelMap.get(remoteAddr);
       if (rdmaChannel == null) {
+
         RdmaChannel.RdmaChannelType rdmaChannelType;
-        if (driverInetAddress.equals(remoteAddr.getAddress()) ||
-            driverInetAddress.equals(localInetSocketAddress.getAddress())) {
-          // RPC communication is limited to driver<->executor only
-          rdmaChannelType = RdmaChannel.RdmaChannelType.RPC_REQUESTOR;
-        } else {
-          rdmaChannelType = RdmaChannel.RdmaChannelType.RDMA_READ_REQUESTOR;
-        }
+        rdmaChannelType = RdmaChannel.RdmaChannelType.RDMA_READ_REQUESTOR;
+        //rdmaChannelType = RdmaChannel.RdmaChannelType.RPC_REQUESTOR;
 
         rdmaChannel = new RdmaChannel(rdmaChannelType, conf, rdmaBufferManager, null,
           getNextCpuVector());
@@ -254,6 +251,7 @@ public class RdmaNode {
             ++connectionAttempts;
             activeRdmaChannelMap.remove(remoteAddr, rdmaChannel);
             rdmaChannel.stop();
+            logger.error("aaaaaaaa");
             if (mustRetry) {
               if (connectionAttempts == maxConnectionAttempts) {
                 logger.error("Failed to connect to " + remoteAddr + " after " +
@@ -326,6 +324,10 @@ public class RdmaNode {
     for (InetSocketAddress inetSocketAddress: passiveRdmaChannelMap.keySet()) {
       final RdmaChannel rdmaChannel = passiveRdmaChannelMap.remove(inetSocketAddress);
       futureTaskList.add(createFutureChannelStopTask(rdmaChannel));
+    }
+
+    for (String hostname : passiveRdmaInetSocketMap.keySet()) {
+      passiveRdmaInetSocketMap.remove(hostname);
     }
 
     // Wait for all of the channels to disconnect

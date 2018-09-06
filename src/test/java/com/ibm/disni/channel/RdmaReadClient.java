@@ -1,10 +1,14 @@
 package com.ibm.disni.channel;
 
+import com.ibm.disni.rdma.verbs.IbvRecvWR;
+import com.ibm.disni.rdma.verbs.IbvSendWR;
+import com.ibm.disni.rdma.verbs.IbvSge;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
+import java.util.LinkedList;
 
 /**
  * locate org.apache.storm.messaging.rdma
@@ -15,10 +19,11 @@ public class RdmaReadClient {
     private static final Logger logger = LoggerFactory.getLogger(RdmaReadClient.class);
 
     public static void main(String[] args) throws Exception {
+
         RdmaNode rdmaClient=new RdmaNode("10.10.0.24", true, new RdmaShuffleConf(), new RdmaCompletionListener() {
             @Override
             public void onSuccess(ByteBuffer buf) {
-                logger.info("success");
+                logger.info("success1111");
             }
 
             @Override
@@ -27,17 +32,47 @@ public class RdmaReadClient {
             }
         });
 
-        RdmaBufferManager rdmaBufferManager = rdmaClient.getRdmaBufferManager();
-        RdmaRegisteredBuffer registeredBuffer=new RdmaRegisteredBuffer(rdmaBufferManager,100);
-        ByteBuffer byteBuffer = registeredBuffer.getByteBuffer(100);
-
         RdmaChannel rdmaChannel = rdmaClient.getRdmaChannel(new InetSocketAddress("10.10.0.25", 1955), true);
+        VerbsTools commRdma = rdmaChannel.getCommRdma();
 
-        long addr = byteBuffer.getLong();
-        int lkey = byteBuffer.getInt();
-        int length = byteBuffer.getInt();
+        RdmaBuffer recvMr = rdmaChannel.getReceiveBuffer();
+        ByteBuffer recvBuf = recvMr.getByteBuffer();
+        RdmaBuffer dataMr = rdmaChannel.getDataBuffer();
+        ByteBuffer dataBuf = dataMr.getByteBuffer();
+        RdmaBuffer sendMr = rdmaChannel.getSendBuffer();
+        ByteBuffer sendBuf = sendMr.getByteBuffer();
+
+        LinkedList<IbvRecvWR> wrList_recv = new LinkedList<IbvRecvWR>();
+
+        IbvSge sgeRecv = new IbvSge();
+        sgeRecv.setAddr(recvMr.getAddress());
+        sgeRecv.setLength(recvMr.getLength());
+        sgeRecv.setLkey(recvMr.getLkey());
+        LinkedList<IbvSge> sgeListRecv = new LinkedList<IbvSge>();
+        sgeListRecv.add(sgeRecv);
+        IbvRecvWR recvWR = new IbvRecvWR();
+        recvWR.setSg_list(sgeListRecv);
+        recvWR.setWr_id(1000);
+        wrList_recv.add(recvWR);
+
+        commRdma.initSGRecv(wrList_recv);
+
+        logger.info("first add: "+recvBuf.getLong()+" lkey: "+recvBuf.getInt()+" length: "+recvBuf.getInt());
+
+        //let's wait for the first message to be received from the server
+        rdmaChannel.completeSGRecv();
+
+        recvBuf.clear();
+        dataBuf.clear();
+        long addr = recvBuf.getLong();
+        int lkey = recvBuf.getInt();
+        int length = recvBuf.getInt();
         logger.info("second add: "+addr+" lkey: "+lkey+" length: "+length);
+        logger.info("second add: "+dataBuf.getLong()+" lkey: "+dataBuf.getInt()+" length: "+dataBuf.getInt());
 
+        recvBuf.clear();
+        dataBuf.clear();
+        sendBuf.clear();
         rdmaChannel.rdmaReadInQueue(new RdmaCompletionListener() {
             @Override
             public void onSuccess(ByteBuffer buf) {
@@ -45,11 +80,40 @@ public class RdmaReadClient {
             }
             @Override
             public void onFailure(Throwable exception) {
-
+                exception.printStackTrace();
             }
-        },registeredBuffer.getRegisteredAddress(),registeredBuffer.getLkey(),new int[]{length},new long[]{addr},new int[]{lkey});
+        },dataMr.getAddress(),dataMr.getLkey(),new int[]{length},new long[]{addr},new int[]{lkey});
 
-        logger.info("RdmaActiveReadClient::read memory from server: " + byteBuffer.asCharBuffer().toString());
-        Thread.sleep(10000000);
+        //let's prepare a one-sided RDMA read operation to fetch the content of that remote buffer
+        LinkedList<IbvSendWR> wrList_send = new LinkedList<IbvSendWR>();
+        IbvSge sgeSend = new IbvSge();
+
+        dataBuf.clear();
+        logger.info(dataBuf.toString());
+        logger.info("RdmaActiveReadClient::read memory from server: " + dataBuf.asCharBuffer().toString());
+
+        LinkedList<IbvSge> sgeList = new LinkedList<IbvSge>();
+        sgeList.add(sgeSend);
+        IbvSendWR sendWR = new IbvSendWR();;
+        sgeSend = new IbvSge();
+        sgeSend.setAddr(sendMr.getAddress());
+        sgeSend.setLength(sendMr.getLength());
+        sgeSend.setLkey(sendMr.getLkey());
+        sgeList.clear();
+        sgeList.add(sgeSend);
+        sendWR = new IbvSendWR();
+        sendWR.setWr_id(1002);
+        sendWR.setSg_list(sgeList);
+        sendWR.setOpcode(IbvSendWR.IBV_WR_SEND);
+        sendWR.setSend_flags(IbvSendWR.IBV_SEND_SIGNALED);
+        wrList_send.clear();
+        wrList_send.add(sendWR);
+
+        //let's post the final message
+        recvBuf.clear();
+        dataBuf.clear();
+        sendBuf.clear();
+        commRdma.send( wrList_send, true, false);
+
     }
 }

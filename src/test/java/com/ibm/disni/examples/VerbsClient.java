@@ -22,6 +22,7 @@
 package com.ibm.disni.examples;
 
 import com.ibm.disni.CmdLineCommon;
+import com.ibm.disni.channel.VerbsTools;
 import com.ibm.disni.rdma.verbs.*;
 import org.apache.commons.cli.ParseException;
 
@@ -30,6 +31,9 @@ import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
 import java.util.LinkedList;
 
+/**
+ * java -cp disni-1.6-jar-with-dependencies.jar:disni-1.6-tests.jar com.ibm.disni.examples.VerbsClient -a 10.10.0.25
+ */
 public class VerbsClient {
 	private String ipAddress;
 	private int port;
@@ -39,6 +43,7 @@ public class VerbsClient {
 		//open the CM and the verbs interfaces
 
 		//create a communication channel for receiving CM events
+		//1.创建一个RDMA的Channel 通信通道为了接收RDMA 通信事件
 		RdmaEventChannel cmChannel = RdmaEventChannel.createEventChannel();
 		if (cmChannel == null){
 			System.out.println("VerbsClient::cmChannel null");
@@ -46,6 +51,7 @@ public class VerbsClient {
 		}
 
 		//create a RdmaCmId for this client
+		//2.创建一个RDMA 通信ID 为了client 每一个clinet就是一个RDMA client
 		RdmaCmId idPriv = cmChannel.createId(RdmaCm.RDMA_PS_TCP);
 		if (idPriv == null){
 			System.out.println("VerbsClient::id null");
@@ -53,6 +59,7 @@ public class VerbsClient {
 		}
 
 		//before connecting, we have to resolve addresses
+		//3.在建立连接之前，先要决定目标地址。
 		InetAddress _dst = InetAddress.getByName(ipAddress);
 		InetSocketAddress dst = new InetSocketAddress(_dst, port);
 		int ret = idPriv.resolveAddr(null, dst, 2000);
@@ -62,6 +69,7 @@ public class VerbsClient {
 		}
 
 		//resolve addr returns an event, we have to catch that event
+		//决定了目标地址会返回一个事件，我们必须catch 这个事件
 		RdmaCmEvent cmEvent = cmChannel.getCmEvent(-1);
 		if (cmEvent == null){
 			System.out.println("VerbsClient::cmEvent null");
@@ -74,6 +82,7 @@ public class VerbsClient {
 		cmEvent.ackEvent();
 
 		//we also have to resolve the route
+		//4.需要解决路由
 		ret = idPriv.resolveRoute(2000);
 		if (ret < 0){
 			System.out.println("VerbsClient::resolveRoute failed");
@@ -81,6 +90,7 @@ public class VerbsClient {
 		}
 
 		//and catch that event too
+        //catch 这个事件
 		cmEvent = cmChannel.getCmEvent(-1);
 		if (cmEvent == null){
 			System.out.println("VerbsClient::cmEvent null");
@@ -92,10 +102,13 @@ public class VerbsClient {
 		}
 		cmEvent.ackEvent();
 
+
 		//let's create a device context
+        //5.创建一个设备Context
 		IbvContext context = idPriv.getVerbs();
 
 		//and a protection domain, we use that one later for registering memory
+        //6.创建一个保护域，用来注册内存Memory Region
 		IbvPd pd = context.allocPd();
 		if (pd == null){
 			System.out.println("VerbsClient::pd null");
@@ -103,6 +116,7 @@ public class VerbsClient {
 		}
 
 		//the comp channel is used for getting CQ events
+        //7.创建一个the comp channel，这个channel被用来获取CQ事件
 		IbvCompChannel compChannel = context.createCompChannel();
 		if (compChannel == null){
 			System.out.println("VerbsClient::compChannel null");
@@ -110,6 +124,7 @@ public class VerbsClient {
 		}
 
 		//let's create a completion queue
+        //8.让我们创建一个完成队列
 		IbvCQ cq = context.createCQ(compChannel, 50, 0);
 		if (cq == null){
 			System.out.println("VerbsClient::cq null");
@@ -119,6 +134,7 @@ public class VerbsClient {
 		cq.reqNotification(false).execute().free();
 
 		//we prepare for the creation of a queue pair (QP)
+        //9.创建一个Queue Pair
 		IbvQPInitAttr attr = new IbvQPInitAttr();
 		attr.cap().setMax_recv_sge(1);
 		attr.cap().setMax_recv_wr(10);
@@ -134,6 +150,7 @@ public class VerbsClient {
 			return;
 		}
 
+		///////////////////////////////////////////////////////准备工作////////////////////////////////////////////////////////////////////
 		int buffercount = 3;
 		int buffersize = 100;
 		ByteBuffer buffers[] = new ByteBuffer[buffercount];
@@ -153,23 +170,6 @@ public class VerbsClient {
 		IbvMr recvMr = mrlist[2];
 
 		LinkedList<IbvRecvWR> wrList_recv = new LinkedList<IbvRecvWR>();
-
-		IbvSge sgeRecv = new IbvSge();
-		sgeRecv.setAddr(recvMr.getAddr());
-		sgeRecv.setLength(recvMr.getLength());
-		sgeRecv.setLkey(recvMr.getLkey());
-		LinkedList<IbvSge> sgeListRecv = new LinkedList<IbvSge>();
-		sgeListRecv.add(sgeRecv);
-		IbvRecvWR recvWR = new IbvRecvWR();
-		recvWR.setSg_list(sgeListRecv);
-		recvWR.setWr_id(1000);
-		wrList_recv.add(recvWR);
-
-		//it's important to post those receive operations before connecting
-		//otherwise the server may issue a send operation and which cannot be received
-		//this class wraps soem of the RDMA data operations
-		VerbsTools commRdma = new VerbsTools(context, compChannel, qp, cq);
-		commRdma.initSGRecv(wrList_recv);
 
 		//now let's connect to the server
 		RdmaConnParam connParam = new RdmaConnParam();
@@ -191,6 +191,23 @@ public class VerbsClient {
 			return;
 		}
 		cmEvent.ackEvent();
+
+		IbvSge sgeRecv = new IbvSge();
+		sgeRecv.setAddr(recvMr.getAddr());
+		sgeRecv.setLength(recvMr.getLength());
+		sgeRecv.setLkey(recvMr.getLkey());
+		LinkedList<IbvSge> sgeListRecv = new LinkedList<IbvSge>();
+		sgeListRecv.add(sgeRecv);
+		IbvRecvWR recvWR = new IbvRecvWR();
+		recvWR.setSg_list(sgeListRecv);
+		recvWR.setWr_id(1000);
+		wrList_recv.add(recvWR);
+
+		//it's important to post those receive operations before connecting
+		//otherwise the server may issue a send operation and which cannot be received
+		//this class wraps soem of the RDMA data operations
+		VerbsTools commRdma = new VerbsTools(context, compChannel, qp, cq);
+		commRdma.initSGRecv(wrList_recv);
 
 		//let's wait for the first message to be received from the server
 		commRdma.completeSGRecv(wrList_recv, false);

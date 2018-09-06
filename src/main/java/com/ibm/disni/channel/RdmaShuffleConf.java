@@ -21,13 +21,17 @@ public class RdmaShuffleConf {
 
     private int recvWrSize= 4096;
 
+    private int sendWrSize = 4096;
+
+    private int dataWrSize = 4096*2;
+
     private int rdmaCmEventTimeout= 20000;
 
     private int teardownListenTimeout= 50;
 
     private int resolvePathTimeout= 2000;
 
-    private long maxBufferAllocationSize=10*1024*1024*1024;
+    private long maxBufferAllocationSize=10*1024*1024;
 
     private long maxAggPrealloc=0;
 
@@ -37,11 +41,9 @@ public class RdmaShuffleConf {
 
     private int portMaxRetries=16;
 
-    private int clientPort=1955;
+    private int port=1955;
 
-    private int serverPort=1955;
-
-    private String serverHost="node25";
+    private String serverHost="10.10.0.25";
 
     public boolean useOdp(IbvContext context) {
         int rcOdpCaps = 0;
@@ -67,19 +69,24 @@ public class RdmaShuffleConf {
         return swFlowControl;
     }
 
-
     public int recvQueueDepth() {
         return recvQueueDepth;
     }
-
 
     public int sendQueueDepth() {
         return sendQueueDepth;
     }
 
-
     public int recvWrSize() {
         return recvWrSize;
+    }
+
+    public int sendWrSize() {
+        return sendWrSize;
+    }
+
+    public int dataWrSize() {
+        return dataWrSize;
     }
 
     public int rdmaCmEventTimeout() {
@@ -118,11 +125,11 @@ public class RdmaShuffleConf {
         return serverHost;
     }
 
-    public int clientPort() {
-        return clientPort;
+    public int getPort() {
+        return port;
     }
 
-    public int serverPort() {
-        return serverPort;
+    public void setPort(int port) {
+        this.port = port;
     }
 }

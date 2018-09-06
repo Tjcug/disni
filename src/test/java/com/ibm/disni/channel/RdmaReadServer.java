@@ -15,10 +15,10 @@ public class RdmaReadServer {
     private static final Logger logger = LoggerFactory.getLogger(RdmaReadServer.class);
 
     public static void main(String[] args) throws Exception {
-        RdmaNode rdmaServer=new RdmaNode("10.10.0.25", false, new RdmaShuffleConf(), new RdmaCompletionListener() {
+        RdmaNode rdmaServer=new RdmaNode("10.10.0.25", true, new RdmaShuffleConf(), new RdmaCompletionListener() {
             @Override
             public void onSuccess(ByteBuffer buf) {
-                logger.info("success");
+                logger.info("success1111");
             }
 
             @Override
@@ -27,33 +27,68 @@ public class RdmaReadServer {
             }
         });
 
-        RdmaBufferManager rdmaBufferManager = rdmaServer.getRdmaBufferManager();
-        RdmaRegisteredBuffer registeredDataBuffer=new RdmaRegisteredBuffer(rdmaBufferManager,100);
-        RdmaRegisteredBuffer sendAddressBuffer=new RdmaRegisteredBuffer(rdmaBufferManager,100);
+        InetSocketAddress address = null;
+        RdmaChannel rdmaChannel=null;
 
-        ByteBuffer dataBuf = registeredDataBuffer.getByteBuffer(100);
-        dataBuf.asCharBuffer().put("This is a RDMA/read on stag " + sendAddressBuffer.getLkey() + " !");
+        while (true){
+            address = rdmaServer.passiveRdmaInetSocketMap.get("10.10.0.24");
+            if(address!=null){
+                rdmaChannel=rdmaServer.passiveRdmaChannelMap.get(address);
+                if(rdmaChannel.isConnected())
+                    break;
+            }
+        }
+
+        logger.info(rdmaServer.passiveRdmaInetSocketMap.toString());
+
+        VerbsTools commRdma = rdmaChannel.getCommRdma();
+
+        RdmaBuffer sendMr = rdmaChannel.getSendBuffer();
+        ByteBuffer sendBuf = sendMr.getByteBuffer();
+        RdmaBuffer dataMr = rdmaChannel.getDataBuffer();
+        ByteBuffer dataBuf = dataMr.getByteBuffer();
+        RdmaBuffer recvMr = rdmaChannel.getReceiveBuffer();
+        ByteBuffer recvBuf = recvMr.getByteBuffer();
+
+        ByteBuffer byteBuffer= ByteBuffer.allocateDirect(1024);
+        byteBuffer.asCharBuffer().put("This is a RDMA/read on stag " + dataMr.getLkey() + " !");
+        byteBuffer.clear();
+
+        dataBuf.asCharBuffer().put("This is a RDMA/read on stag " + dataMr.getLkey() + " !");
         dataBuf.clear();
 
-        ByteBuffer sendBuf = sendAddressBuffer.getByteBuffer(100);
-        sendBuf.putLong(registeredDataBuffer.getRegisteredAddress());
-        sendBuf.putInt(registeredDataBuffer.getLkey());
-        sendBuf.putInt(100);
+        sendBuf.putLong(dataMr.getAddress());
+        sendBuf.putInt(dataMr.getLkey());
+        sendBuf.putInt(dataMr.getLength());
         sendBuf.clear();
 
-        RdmaChannel rdmaChannel = rdmaServer.getRdmaChannel(new InetSocketAddress("10.10.0.24", 1955), true);
+        logger.info("first add: "+dataMr.getAddress()+" lkey: "+dataMr.getLkey()+" length: "+dataMr.getLength());
+        logger.info("dataBuf: "+ dataBuf.asCharBuffer().toString());
+        logger.info("byteBuffer: "+ byteBuffer.asCharBuffer().toString());
+
+        //post a send call, here we send a message which include the RDMA information of a data buffer
+        recvBuf.clear();
+        dataBuf.clear();
+        sendBuf.clear();
         rdmaChannel.rdmaSendInQueue(new RdmaCompletionListener() {
             @Override
             public void onSuccess(ByteBuffer buf) {
-
+                logger.info("RDMA SEND Address Success");
             }
 
             @Override
             public void onFailure(Throwable exception) {
-
+                exception.printStackTrace();
             }
-        },new long[]{sendAddressBuffer.getRegisteredAddress()},new int[]{sendAddressBuffer.getLkey()},new int[]{100});
+        },new long[]{sendMr.getAddress()},new int[]{sendMr.getLkey()},new int[]{sendMr.getLength()});
 
-        Thread.sleep(10000000);
+        logger.info("RDMA SEND Address Success");
+
+        System.out.println("VerbsServer::stag info sent");
+
+        //wait for the final message from the server
+        rdmaChannel.completeSGRecv();
+
+        System.out.println("VerbsServer::done");
     }
 }

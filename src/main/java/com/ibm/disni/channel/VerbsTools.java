@@ -19,14 +19,18 @@
  *
  */
 
-package com.ibm.disni.examples;
+package com.ibm.disni.channel;
 
 import com.ibm.disni.rdma.verbs.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.nio.ByteBuffer;
 import java.util.LinkedList;
 
 public class VerbsTools {
+    private static final Logger logger = LoggerFactory.getLogger(VerbsTools.class);
+
 	public static boolean CachingON = false;
 
 	public static int MAX_SGE = 1;
@@ -70,6 +74,20 @@ public class VerbsTools {
 		return false;
 	}
 
+	public boolean send(LinkedList<IbvSendWR> wrList, boolean signaled, boolean polling)
+			throws Exception {
+
+		postSendCall = getPostSendCall(wrList);
+		postSendCall.execute();
+
+        logger.info("postSendCall execute");
+
+		if (signaled) {
+			return checkCq(wrList.size(), polling);
+		}
+		return false;
+	}
+
 	public void initSGRecv(LinkedList<IbvRecvWR> wrList)
 			throws Exception {
 		postRecvCall = getPostRecvCall(wrList);
@@ -80,11 +98,12 @@ public class VerbsTools {
 		return checkCq(wrList.size(), polling);
 	}
 
-	private boolean checkCq(int expectedElements, boolean polling) throws Exception{
+	public boolean checkCq(int expectedElements, boolean polling) throws Exception{
 		boolean success = false;
 		int elementsRead = 0;
 
 		while (true) {
+			logger.info("-----------");
 			if (!polling){
 				reqNotifyCall = getReqNotifyCall();
 				reqNotifyCall.execute();
