@@ -8,4 +8,4 @@ cd libdisni
 #3.configure 配置
 ./configure --prefix=/usr/local/lib/libdisni --with-jdk=/opt/java/jdk1.8.0_151
 4. 运行make 和install
-make && install
+make && make install

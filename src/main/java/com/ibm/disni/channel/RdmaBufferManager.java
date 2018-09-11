@@ -79,7 +79,7 @@ public class RdmaBufferManager {
     private long maxCacheSize;
     private static final ExecutorService executorService = Executors.newCachedThreadPool();;
 
-    RdmaBufferManager(IbvPd pd, boolean isExecutor, RdmaShuffleConf conf) throws IOException {
+    public RdmaBufferManager(IbvPd pd, boolean isExecutor, RdmaShuffleConf conf) throws IOException {
         this.pd = pd;
         this.minimumAllocationSize = Math.min(conf.recvWrSize(), MIN_BLOCK_SIZE);
         this.maxCacheSize = conf.maxBufferAllocationSize();

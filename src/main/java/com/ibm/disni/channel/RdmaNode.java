@@ -111,106 +111,108 @@ public class RdmaNode {
       throw ule;
     }
 
-    listeningThread = new Thread(() -> {
-      logger.info("Starting RdmaNode Listening Server, listening on: " + localInetSocketAddress);
+    if(!isClient){
+      listeningThread = new Thread(() -> {
+        logger.info("Starting RdmaNode Listening Server, listening on: " + localInetSocketAddress);
 
-      final int teardownListenTimeout = conf.teardownListenTimeout();
-      while (runThread.get()) {
-        try {
-          // Wait for next event
-          RdmaCmEvent event = cmChannel.getCmEvent(teardownListenTimeout);
-          if (event == null) {
-            continue;
-          }
+        final int teardownListenTimeout = conf.teardownListenTimeout();
+        while (runThread.get()) {
+          try {
+            // Wait for next event
+            RdmaCmEvent event = cmChannel.getCmEvent(teardownListenTimeout);
+            if (event == null) {
+              continue;
+            }
 
-          RdmaCmId cmId = event.getConnIdPriv();
-          int eventType = event.getEvent();
-          event.ackEvent();
+            RdmaCmId cmId = event.getConnIdPriv();
+            int eventType = event.getEvent();
+            event.ackEvent();
 
-          InetSocketAddress inetSocketAddress = (InetSocketAddress)cmId.getDestination();
+            InetSocketAddress inetSocketAddress = (InetSocketAddress)cmId.getDestination();
 
-          if (eventType == RdmaCmEvent.EventType.RDMA_CM_EVENT_CONNECT_REQUEST.ordinal()) {
-            RdmaChannel rdmaChannel = passiveRdmaChannelMap.get(inetSocketAddress);
-            if (rdmaChannel != null) {
-              if (rdmaChannel.isError()) {
-                logger.warn("Received a redundant RDMA connection request from " +
-                  inetSocketAddress + ", which already has an older connection in error state." +
-                  " Removing the old connection and creating a new one");
-                passiveRdmaChannelMap.remove(inetSocketAddress);
-                passiveRdmaInetSocketMap.remove(inetSocketAddress.getHostName());
+            if (eventType == RdmaCmEvent.EventType.RDMA_CM_EVENT_CONNECT_REQUEST.ordinal()) {
+              RdmaChannel rdmaChannel = passiveRdmaChannelMap.get(inetSocketAddress);
+              if (rdmaChannel != null) {
+                if (rdmaChannel.isError()) {
+                  logger.warn("Received a redundant RDMA connection request from " +
+                          inetSocketAddress + ", which already has an older connection in error state." +
+                          " Removing the old connection and creating a new one");
+                  passiveRdmaChannelMap.remove(inetSocketAddress);
+                  passiveRdmaInetSocketMap.remove(inetSocketAddress.getHostName());
+                  rdmaChannel.stop();
+                } else {
+                  logger.warn("Received a redundant RDMA connection request from " +
+                          inetSocketAddress + ", rejecting the request");
+                  // TODO: Add reject initiation code once disni implements/exports reject
+                  continue;
+                }
+              }
+
+              RdmaChannel.RdmaChannelType rdmaChannelType;
+              rdmaChannelType = RdmaChannel.RdmaChannelType.RDMA_READ_RESPONDER;
+              //rdmaChannelType = RdmaChannel.RdmaChannelType.RPC_RESPONDER;
+
+              rdmaChannel = new RdmaChannel(rdmaChannelType, conf, rdmaBufferManager, receiveListener,
+                      cmId, getNextCpuVector());
+              if (passiveRdmaChannelMap.putIfAbsent(inetSocketAddress, rdmaChannel) != null) {
+                logger.warn("Race in creating an RDMA Channel for " + inetSocketAddress);
                 rdmaChannel.stop();
-              } else {
-                logger.warn("Received a redundant RDMA connection request from " +
-                  inetSocketAddress + ", rejecting the request");
-                // TODO: Add reject initiation code once disni implements/exports reject
                 continue;
               }
-            }
+              passiveRdmaInetSocketMap.put(inetSocketAddress.getAddress().getHostAddress(),inetSocketAddress);
 
-            RdmaChannel.RdmaChannelType rdmaChannelType;
-            rdmaChannelType = RdmaChannel.RdmaChannelType.RDMA_READ_RESPONDER;
-            //rdmaChannelType = RdmaChannel.RdmaChannelType.RPC_RESPONDER;
+              try {
+                rdmaChannel.accept();
+              } catch (IOException ioe) {
+                logger.error("Error in accept call on a passive RdmaChannel: " + ioe);
+                passiveRdmaChannelMap.remove(inetSocketAddress);
+                passiveRdmaInetSocketMap.remove(inetSocketAddress.getAddress().getHostAddress());
+                rdmaChannel.stop();
+              }
+            } else if (eventType == RdmaCmEvent.EventType.RDMA_CM_EVENT_ESTABLISHED.ordinal()) {
+              RdmaChannel rdmaChannel = passiveRdmaChannelMap.get(inetSocketAddress);
+              if (rdmaChannel == null) {
+                logger.warn("Received an RDMA CM Established Event from " + inetSocketAddress +
+                        ", which has no local matching connection. Ignoring");
+                continue;
+              }
 
-            rdmaChannel = new RdmaChannel(rdmaChannelType, conf, rdmaBufferManager, receiveListener,
-              cmId, getNextCpuVector());
-            if (passiveRdmaChannelMap.putIfAbsent(inetSocketAddress, rdmaChannel) != null) {
-              logger.warn("Race in creating an RDMA Channel for " + inetSocketAddress);
-              rdmaChannel.stop();
-              continue;
-            }
-            passiveRdmaInetSocketMap.put(inetSocketAddress.getAddress().getHostAddress(),inetSocketAddress);
-
-            try {
-              rdmaChannel.accept();
-            } catch (IOException ioe) {
-              logger.error("Error in accept call on a passive RdmaChannel: " + ioe);
-              passiveRdmaChannelMap.remove(inetSocketAddress);
+              if (rdmaChannel.isError()) {
+                logger.warn("Received a redundant RDMA connection request from " + inetSocketAddress +
+                        ", with a local connection in error state. Removing the old connection and " +
+                        "aborting");
+                passiveRdmaChannelMap.remove(inetSocketAddress);
+                passiveRdmaInetSocketMap.remove(inetSocketAddress.getAddress().getHostAddress());
+                rdmaChannel.stop();
+              } else {
+                rdmaChannel.finalizeConnection();
+              }
+            } else if (eventType == RdmaCmEvent.EventType.RDMA_CM_EVENT_DISCONNECTED.ordinal()) {
+              RdmaChannel rdmaChannel = passiveRdmaChannelMap.remove(inetSocketAddress);
               passiveRdmaInetSocketMap.remove(inetSocketAddress.getAddress().getHostAddress());
-              rdmaChannel.stop();
-            }
-          } else if (eventType == RdmaCmEvent.EventType.RDMA_CM_EVENT_ESTABLISHED.ordinal()) {
-            RdmaChannel rdmaChannel = passiveRdmaChannelMap.get(inetSocketAddress);
-            if (rdmaChannel == null) {
-              logger.warn("Received an RDMA CM Established Event from " + inetSocketAddress +
-                ", which has no local matching connection. Ignoring");
-              continue;
-            }
+              if (rdmaChannel == null) {
+                logger.info("Received an RDMA CM Disconnect Event from " + inetSocketAddress +
+                        ", which has no local matching connection. Ignoring");
+                continue;
+              }
 
-            if (rdmaChannel.isError()) {
-              logger.warn("Received a redundant RDMA connection request from " + inetSocketAddress +
-                ", with a local connection in error state. Removing the old connection and " +
-                "aborting");
-              passiveRdmaChannelMap.remove(inetSocketAddress);
-              passiveRdmaInetSocketMap.remove(inetSocketAddress.getAddress().getHostAddress());
               rdmaChannel.stop();
             } else {
-              rdmaChannel.finalizeConnection();
+              logger.info("Received an unexpected CM Event {}", eventType);
             }
-          } else if (eventType == RdmaCmEvent.EventType.RDMA_CM_EVENT_DISCONNECTED.ordinal()) {
-            RdmaChannel rdmaChannel = passiveRdmaChannelMap.remove(inetSocketAddress);
-            passiveRdmaInetSocketMap.remove(inetSocketAddress.getAddress().getHostAddress());
-            if (rdmaChannel == null) {
-              logger.info("Received an RDMA CM Disconnect Event from " + inetSocketAddress +
-                ", which has no local matching connection. Ignoring");
-              continue;
-            }
-
-            rdmaChannel.stop();
-          } else {
-            logger.info("Received an unexpected CM Event {}", eventType);
+          } catch (Exception e) {
+            e.printStackTrace();
+            throw new RuntimeException("Exception in RdmaNode listening thread " + e);
           }
-        } catch (Exception e) {
-          e.printStackTrace();
-          throw new RuntimeException("Exception in RdmaNode listening thread " + e);
         }
-      }
-      logger.info("Exiting RdmaNode Listening Server");
-    },
-    "RdmaNode connection listening thread");
+        logger.info("Exiting RdmaNode Listening Server");
+      },
+              "RdmaNode connection listening thread");
 
+      listeningThread.setDaemon(true);
+      listeningThread.start();
+    }
     runThread.set(true);
-    listeningThread.setDaemon(true);
-    listeningThread.start();
   }
 
   private int getNextCpuVector() {

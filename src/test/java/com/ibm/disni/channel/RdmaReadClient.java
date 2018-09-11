@@ -62,6 +62,7 @@ public class RdmaReadClient {
         //let's wait for the first message to be received from the server
         rdmaChannel.completeSGRecv();
 
+
         recvBuf.clear();
         dataBuf.clear();
         long addr = recvBuf.getLong();

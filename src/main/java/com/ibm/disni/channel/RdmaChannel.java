@@ -842,7 +842,7 @@ public class RdmaChannel {
 //        return false;
 //    }
 
-    void stop() throws InterruptedException, IOException {
+    public void stop() throws InterruptedException, IOException {
         if (!isStopped.getAndSet(true)) {
             logger.info("Stopping RdmaChannel " + this);
 
