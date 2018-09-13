@@ -16,7 +16,7 @@ import java.nio.ByteBuffer;
  * locate org.apache.storm.messaging.rdma
  * Created by mastertj on 2018/8/23.
  */
-class RdmaBuffer {
+public class RdmaBuffer {
     private static final Logger logger = LoggerFactory.getLogger(RdmaBuffer.class);
 
     private IbvMr ibvMr = null;
@@ -26,24 +26,24 @@ class RdmaBuffer {
 
     public static final UnsafeMemoryAllocator unsafeAlloc = new UnsafeMemoryAllocator();
 
-    RdmaBuffer(IbvPd ibvPd, int length) throws IOException {
+    public RdmaBuffer(IbvPd ibvPd, int length) throws IOException {
         block = unsafeAlloc.allocate((long)length);
         address = block.getBaseOffset();
         this.length = length;
         register(ibvPd);
     }
 
-    long getAddress() {
+    public long getAddress() {
         return address;
     }
-    int getLength() {
+    public int getLength() {
         return length;
     }
-    int getLkey() {
+    public int getLkey() {
         return ibvMr.getLkey();
     }
 
-    void free() {
+    public void free() {
         unregister();
         unsafeAlloc.free(block);
     }
@@ -68,7 +68,7 @@ class RdmaBuffer {
         }
     }
 
-    ByteBuffer getByteBuffer() throws IOException {
+    public ByteBuffer getByteBuffer() throws IOException {
         Class<?> classDirectByteBuffer;
         try {
             classDirectByteBuffer = Class.forName("java.nio.DirectByteBuffer");

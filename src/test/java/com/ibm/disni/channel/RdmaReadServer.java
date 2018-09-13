@@ -15,7 +15,7 @@ public class RdmaReadServer {
     private static final Logger logger = LoggerFactory.getLogger(RdmaReadServer.class);
 
     public static void main(String[] args) throws Exception {
-        RdmaNode rdmaServer=new RdmaNode("10.10.0.25", true, new RdmaShuffleConf(), new RdmaCompletionListener() {
+        RdmaNode rdmaServer=new RdmaNode("10.10.0.25", false, new RdmaShuffleConf(), new RdmaCompletionListener() {
             @Override
             public void onSuccess(ByteBuffer buf) {
                 logger.info("success1111");
@@ -25,6 +25,8 @@ public class RdmaReadServer {
             public void onFailure(Throwable exception) {
                 exception.printStackTrace();
             }
+        }, (remot, rdmaChannel) -> {
+
         });
 
         InetSocketAddress address = null;
@@ -57,38 +59,43 @@ public class RdmaReadServer {
         dataBuf.asCharBuffer().put("This is a RDMA/read on stag " + dataMr.getLkey() + " !");
         dataBuf.clear();
 
-        sendBuf.putLong(dataMr.getAddress());
-        sendBuf.putInt(dataMr.getLkey());
-        sendBuf.putInt(dataMr.getLength());
-        sendBuf.clear();
+        for(int i = 0; i < 5; i++) {
+            sendBuf.putLong(dataMr.getAddress());
+            sendBuf.putInt(dataMr.getLkey());
+            sendBuf.putInt(dataMr.getLength());
+            sendBuf.clear();
 
-        logger.info("first add: "+dataMr.getAddress()+" lkey: "+dataMr.getLkey()+" length: "+dataMr.getLength());
-        logger.info("dataBuf: "+ dataBuf.asCharBuffer().toString());
-        logger.info("byteBuffer: "+ byteBuffer.asCharBuffer().toString());
+            logger.info("first add: " + dataMr.getAddress() + " lkey: " + dataMr.getLkey() + " length: " + dataMr.getLength());
+            logger.info("dataBuf: " + dataBuf.asCharBuffer().toString());
+            logger.info("byteBuffer: " + byteBuffer.asCharBuffer().toString());
 
-        //post a send call, here we send a message which include the RDMA information of a data buffer
-        recvBuf.clear();
-        dataBuf.clear();
-        sendBuf.clear();
-        rdmaChannel.rdmaSendInQueue(new RdmaCompletionListener() {
-            @Override
-            public void onSuccess(ByteBuffer buf) {
-                logger.info("RDMA SEND Address Success");
-            }
+            //post a send call, here we send a message which include the RDMA information of a data buffer
+            recvBuf.clear();
+            dataBuf.clear();
+            sendBuf.clear();
+            rdmaChannel.rdmaSendInQueue(new RdmaCompletionListener() {
+                @Override
+                public void onSuccess(ByteBuffer buf) {
+                    logger.info("RDMA SEND Address Success");
+                }
 
-            @Override
-            public void onFailure(Throwable exception) {
-                exception.printStackTrace();
-            }
-        },new long[]{sendMr.getAddress()},new int[]{sendMr.getLkey()},new int[]{sendMr.getLength()});
+                @Override
+                public void onFailure(Throwable exception) {
+                    exception.printStackTrace();
+                }
+            }, new long[]{sendMr.getAddress()}, new int[]{sendMr.getLkey()}, new int[]{sendMr.getLength()});
 
-        logger.info("RDMA SEND Address Success");
+            logger.info("RDMA SEND Address Success");
 
-        System.out.println("VerbsServer::stag info sent");
+            System.out.println("VerbsServer::stag info sent");
 
-        //wait for the final message from the server
-        rdmaChannel.completeSGRecv();
+            //initSGRecv
+            rdmaChannel.initRecvs();
 
-        System.out.println("VerbsServer::done");
+            //wait for the final message from the server
+            rdmaChannel.completeSGRecv();
+
+            System.out.println("VerbsServer::done");
+        }
     }
 }

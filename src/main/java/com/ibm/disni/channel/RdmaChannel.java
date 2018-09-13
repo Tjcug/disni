@@ -345,12 +345,12 @@ public class RdmaChannel {
         processRdmaCmEvent(RdmaCmEvent.EventType.RDMA_CM_EVENT_ESTABLISHED.ordinal(),
                 rdmaCmEventTimeout);
         setRdmaChannelState(RdmaChannelState.CONNECTED);
-
-        if (recvWrSize == 0) {
-            initZeroSizeRecvs();
-        } else {
-            initRecvs();
-        }
+//
+//        if (recvWrSize == 0) {
+//            initZeroSizeRecvs();
+//        } else {
+//            initRecvs();
+//        }
 
     }
 
@@ -374,11 +374,11 @@ public class RdmaChannel {
             throw new IOException("accept() failed");
         }
 
-        if (recvWrSize == 0) {
-            initZeroSizeRecvs();
-        } else {
-            initRecvs();
-        }
+//        if (recvWrSize == 0) {
+//            initZeroSizeRecvs();
+//        } else {
+//            initRecvs();
+//        }
 
     }
 
@@ -616,33 +616,26 @@ public class RdmaChannel {
         svcPostRecv.free();
     }
 
-    private void initRecvs() throws IOException {
+    public void initRecvs() {
         if (isError() || isStopped.get() || recvDepth == 0) { return; }
 
         postRecvWrArray = new PostRecvWr[recvDepth];
         LinkedList<IbvRecvWR> recvWrList = new LinkedList<>();
         logger.info("recvDepth:" +recvDepth);
 
-        for (int i = 0; i < recvDepth; i++) {
-
-            IbvSge sge = new IbvSge();
-            sge.setAddr(receiveBuffer.getAddress());
-            sge.setLength(receiveBuffer.getLength());
-            sge.setLkey(receiveBuffer.getLkey());
-
-            LinkedList<IbvSge> sgeList = new LinkedList<>();
-            sgeList.add(sge);
-
-            IbvRecvWR wr = new IbvRecvWR();
-            wr.setWr_id(i);
-            wr.setSg_list(sgeList);
-
-            postRecvWrArray[i] = new PostRecvWr(wr, receiveBuffer);
-
-            recvWrList.add(wr);
-        }
+        IbvSge sgeRecv = new IbvSge();
+        sgeRecv.setAddr(receiveBuffer.getAddress());
+        sgeRecv.setLength(receiveBuffer.getLength());
+        sgeRecv.setLkey(receiveBuffer.getLkey());
+        LinkedList<IbvSge> sgeList = new LinkedList<>();
+        sgeList.add(sgeRecv);
 
         try {
+            IbvRecvWR recvWR = new IbvRecvWR();
+            recvWR.setWr_id(1000);
+            recvWR.setSg_list(sgeList);
+            recvWrList.add(recvWR);
+            postRecvWrArray[0] = new PostRecvWr(recvWR, receiveBuffer);
             commRdma.initSGRecv(recvWrList);
         } catch (Exception e) {
             e.printStackTrace();
@@ -958,7 +951,12 @@ public class RdmaChannel {
         return dataBuffer;
     }
 
-    public void setDataBuffer(RdmaBuffer dataBuffer) {
-        this.dataBuffer = dataBuffer;
+    public void setDataBuffer(ByteBuffer byteBuffer){
+        try {
+            dataBuffer = rdmaBufferManager.get(byteBuffer.capacity());
+            dataBuffer.getByteBuffer().put(byteBuffer);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
     }
 }
