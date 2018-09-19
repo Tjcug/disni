@@ -1,5 +1,6 @@
-package com.ibm.disni.channel;
+package com.ibm.disni.channel.test;
 
+import com.ibm.disni.channel.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -9,14 +10,15 @@ import java.nio.ByteBuffer;
 /**
  * locate org.apache.storm.messaging.rdma
  * Created by mastertj on 2018/8/27.
- * java -cp disni-1.6-jar-with-dependencies.jar:disni-1.6-tests.jar com.ibm.disni.channel.RdmaReadServer
- *
+ * java -cp disni-1.6-jar-with-dependencies.jar:disni-1.6-tests.jar com.ibm.disni.channel.test.RdmaReadClient
  */
-public class RdmaReadServer {
-    private static final Logger logger = LoggerFactory.getLogger(RdmaReadServer.class);
+public class RdmaReadClient {
+
+    private static final Logger logger = LoggerFactory.getLogger(RdmaReadClient.class);
 
     public static void main(String[] args) throws Exception {
-        RdmaNode rdmaServer=new RdmaNode("10.10.0.25", false, new RdmaShuffleConf(), new RdmaCompletionListener() {
+
+        RdmaNode rdmaClient=new RdmaNode("10.10.0.24", true, new RdmaShuffleConf(), new RdmaCompletionListener() {
             @Override
             public void onSuccess(ByteBuffer buf) {
                 logger.info("success1111");
@@ -26,21 +28,13 @@ public class RdmaReadServer {
             public void onFailure(Throwable exception) {
                 exception.printStackTrace();
             }
-        }, (remot, rdmaChannel) -> {
+        }, (remote, rdmaChannel) -> {
 
         });
 
-        InetSocketAddress address = null;
-        RdmaChannel rdmaChannel=null;
+        RdmaChannel rdmaChannel = rdmaClient.getRdmaChannel(new InetSocketAddress("10.10.0.25", 1955), true);
 
-        while (true){
-            address = rdmaServer.passiveRdmaInetSocketMap.get("10.10.0.24");
-            if(address!=null){
-                rdmaChannel=rdmaServer.passiveRdmaChannelMap.get(address);
-                if(rdmaChannel.isConnected())
-                    break;
-            }
-        }
+        InetSocketAddress address = null;
 
         VerbsTools commRdma = rdmaChannel.getCommRdma();
 
@@ -52,12 +46,12 @@ public class RdmaReadServer {
 
         //dataBuf.asCharBuffer().put("This is a RDMA/read on stag !");
 
-        for(int i = 0; i < 2; i++) {
-
+        while (true){
             //initSGRecv
             rdmaChannel.initRecvs();
 
-            ByteBuffer byteBuffer= ByteBuffer.allocateDirect(1024);
+            ByteBuffer byteBuffer= ByteBuffer.allocateDirect(262184);
+
             byteBuffer.asCharBuffer().put("This is a RDMA/read on stag !");
             byteBuffer.clear();
             rdmaChannel.setDataBuffer(byteBuffer);

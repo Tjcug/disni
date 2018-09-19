@@ -54,8 +54,6 @@ public class RdmaNode {
 
   private static final ExecutorService executorService = Executors.newCachedThreadPool();
 
-  private static final ExecutorService acceptCachePool = Executors.newCachedThreadPool();
-
   public RdmaNode(String hostName, boolean isClient, final RdmaShuffleConf conf,
                   final RdmaCompletionListener receiveListener, final RdmaAcceptListener rdmaAcceptListener) throws Exception {
     this.conf = conf;
@@ -167,8 +165,6 @@ public class RdmaNode {
               try {
                 rdmaChannel.accept();
                 //Accept
-                acceptCachePool.submit(new ChannelAcceptTask(rdmaAcceptListener,inetSocketAddress.getAddress().getHostAddress(),rdmaChannel));
-
               } catch (IOException ioe) {
                 logger.error("Error in accept call on a passive RdmaChannel: " + ioe);
                 passiveRdmaChannelMap.remove(inetSocketAddress);
@@ -191,7 +187,8 @@ public class RdmaNode {
                 passiveRdmaInetSocketMap.remove(inetSocketAddress.getAddress().getHostAddress());
                 rdmaChannel.stop();
               } else {
-                rdmaChannel.finalizeConnection();
+                logger.info(" rdmaChannel finalizeConnection");
+                rdmaChannel.finalizeConnection(rdmaAcceptListener,inetSocketAddress.getAddress().getHostAddress());
               }
             } else if (eventType == RdmaCmEvent.EventType.RDMA_CM_EVENT_DISCONNECTED.ordinal()) {
               RdmaChannel rdmaChannel = passiveRdmaChannelMap.remove(inetSocketAddress);
@@ -349,20 +346,4 @@ public class RdmaNode {
 
   public InetSocketAddress getLocalInetSocketAddress() { return localInetSocketAddress; }
 
-  public class ChannelAcceptTask implements Runnable{
-    private RdmaAcceptListener rdmaAcceptListener;
-    private String remote;
-    private RdmaChannel rdmaChannel;
-
-    public ChannelAcceptTask(RdmaAcceptListener rdmaAcceptListener, String remote, RdmaChannel rdmaChannel) {
-      this.rdmaAcceptListener = rdmaAcceptListener;
-      this.remote = remote;
-      this.rdmaChannel = rdmaChannel;
-    }
-
-    @Override
-    public void run() {
-      rdmaAcceptListener.OnSuccess(remote,rdmaChannel);
-    }
-  }
 }

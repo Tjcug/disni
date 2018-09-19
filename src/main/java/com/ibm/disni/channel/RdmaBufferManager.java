@@ -170,7 +170,7 @@ public class RdmaBufferManager {
                 totalCleaned / 1024, lruStack.length / 1024);
     }
 
-    IbvPd getPd() { return this.pd; }
+   public IbvPd getPd() { return this.pd; }
 
     IbvMr getOdpMr() { return this.odpMr; }
 

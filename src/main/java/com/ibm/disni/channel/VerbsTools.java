@@ -136,6 +136,7 @@ public class VerbsTools {
 				}
 			}
 		}
+		logger.info(" verbs checkCq : "+success);
 		return success;
 	}
 
