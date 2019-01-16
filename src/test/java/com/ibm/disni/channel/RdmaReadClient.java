@@ -63,7 +63,6 @@ public class RdmaReadClient {
                 int lkey = recvBuf.getInt();
                 int length = recvBuf.getInt();
                 logger.info("second add: " + addr + " lkey: " + lkey + " length: " + length);
-                logger.info("second add: " + dataBuf.getLong() + " lkey: " + dataBuf.getInt() + " length: " + dataBuf.getInt());
 
                 recvBuf.clear();
                 dataBuf.clear();

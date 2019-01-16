@@ -51,16 +51,14 @@ public class RdmaReadServer {
         ByteBuffer recvBuf = recvMr.getByteBuffer();
 
         //dataBuf.asCharBuffer().put("This is a RDMA/read on stag !");
-
         for(int i = 0; i < 2; i++) {
 
             //initSGRecv
             rdmaChannel.initRecvs();
 
-            ByteBuffer byteBuffer= ByteBuffer.allocateDirect(1024);
-            byteBuffer.asCharBuffer().put("This is a RDMA/read on stag !");
-            byteBuffer.clear();
-            rdmaChannel.setDataBuffer(byteBuffer);
+            rdmaChannel.getDataBuffer().getByteBuffer().clear();
+            rdmaChannel.getDataBuffer().getByteBuffer().asCharBuffer().put("This is a RDMA/read on stag !"+i);
+            rdmaChannel.getDataBuffer().getByteBuffer().flip();
 
             RdmaBuffer dataMr = rdmaChannel.getDataBuffer();
             ByteBuffer dataBuf = dataMr.getByteBuffer();
