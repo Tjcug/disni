@@ -45,7 +45,7 @@ public class SendRecvClient implements RdmaEndpointFactory<SendRecvClient.Custom
 	private int port;
 
 	public SendRecvClient.CustomClientEndpoint createEndpoint(RdmaCmId idPriv, boolean serverSide) throws IOException {
-		return new CustomClientEndpoint(endpointGroup, idPriv, serverSide);
+		return new CustomClientEndpoint(endpointGroup, idPriv, serverSide, 100);
 	}
 
 	public void run() throws Exception {
@@ -57,8 +57,8 @@ public class SendRecvClient implements RdmaEndpointFactory<SendRecvClient.Custom
 		SendRecvClient.CustomClientEndpoint endpoint = endpointGroup.createEndpoint();
 
 		//connect to the server
- 		InetAddress ipAddress = InetAddress.getByName(host);
- 		InetSocketAddress address = new InetSocketAddress(ipAddress, port);			
+		InetAddress ipAddress = InetAddress.getByName(host);
+		InetSocketAddress address = new InetSocketAddress(ipAddress, port);
 		endpoint.connect(address, 1000);
 		System.out.println("SimpleClient::client channel set up ");
 
@@ -68,20 +68,21 @@ public class SendRecvClient implements RdmaEndpointFactory<SendRecvClient.Custom
 		ByteBuffer sendBuf = endpoint.getSendBuf();
 		sendBuf.asCharBuffer().put("Hello from the client");
 		sendBuf.clear();
-		endpoint.postSend(endpoint.getWrList_send()).execute().free();
-
+		SVCPostSend postSend = endpoint.postSend(endpoint.getWrList_send());
+		postSend.getWrMod(0).setWr_id(4444);
+		postSend.execute().free();
 		//in our custom endpoints we make sure CQ events get stored in a queue, we now query that queue for new CQ events.
 		//in this case a new CQ event means we have sent data, i.e., the message has been sent to the server
 		IbvWC wc = endpoint.getWcEvents().take();
 		System.out.println("SimpleClient::message sent, wr_id " + wc.getWr_id());
 		//in this case a new CQ event means we have received data
-//		endpoint.getWcEvents().take();
-//		System.out.println("SimpleClient::message received");
-//
-//		//the response should be received in this buffer, let's print it
-//		ByteBuffer recvBuf = endpoint.getRecvBuf();
-//		recvBuf.clear();
-//		System.out.println("Message from the server: " + recvBuf.asCharBuffer().toString());
+		endpoint.getWcEvents().take();
+		System.out.println("SimpleClient::message received");
+
+		//the response should be received in this buffer, let's print it
+		ByteBuffer recvBuf = endpoint.getRecvBuf();
+		recvBuf.clear();
+		System.out.println("Message from the server: " + recvBuf.asCharBuffer().toString());
 
 		//close everything
 		endpoint.close();
@@ -115,7 +116,6 @@ public class SendRecvClient implements RdmaEndpointFactory<SendRecvClient.Custom
 		private ByteBuffer buffers[];
 		private IbvMr mrlist[];
 		private int buffercount = 3;
-		private int buffersize;
 
 		private ByteBuffer dataBuf;
 		private IbvMr dataMr;
@@ -136,10 +136,10 @@ public class SendRecvClient implements RdmaEndpointFactory<SendRecvClient.Custom
 
 		private ArrayBlockingQueue<IbvWC> wcEvents;
 
-		public CustomClientEndpoint(RdmaActiveEndpointGroup<CustomClientEndpoint> endpointGroup, RdmaCmId idPriv, boolean serverSide) throws IOException {
+		public CustomClientEndpoint(RdmaActiveEndpointGroup<CustomClientEndpoint> endpointGroup,
+									RdmaCmId idPriv, boolean serverSide, int buffersize) throws IOException {
 			super(endpointGroup, idPriv, serverSide);
 			this.buffercount = 3;
-			this.buffersize = 100;
 			buffers = new ByteBuffer[buffercount];
 			this.mrlist = new IbvMr[buffercount];
 
@@ -245,4 +245,3 @@ public class SendRecvClient implements RdmaEndpointFactory<SendRecvClient.Custom
 	}
 
 }
-

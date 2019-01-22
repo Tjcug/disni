@@ -19,7 +19,7 @@
  *
  */
 
-package com.ibm.disni.channel;
+package com.ibm.disni;
 
 import com.ibm.disni.rdma.verbs.*;
 import org.slf4j.Logger;

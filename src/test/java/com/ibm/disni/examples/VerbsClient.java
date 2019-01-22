@@ -22,7 +22,7 @@
 package com.ibm.disni.examples;
 
 import com.ibm.disni.CmdLineCommon;
-import com.ibm.disni.channel.VerbsTools;
+import com.ibm.disni.VerbsTools;
 import com.ibm.disni.rdma.verbs.*;
 import org.apache.commons.cli.ParseException;
 

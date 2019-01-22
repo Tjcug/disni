@@ -213,7 +213,9 @@ public class RdmaActiveReadClient implements RdmaEndpointFactory<RdmaActiveReadC
             sgeSend.setAddr(dataMr.getAddr());
             sgeSend.setLength(dataMr.getLength());
             sgeSend.setLkey(dataMr.getLkey());
+
             sgeList.add(sgeSend);
+
             sendWR.setWr_id(2000);
             sendWR.setSg_list(sgeList);
             sendWR.setOpcode(IbvSendWR.IBV_WR_SEND);

@@ -66,8 +66,8 @@ public class SendRecvClient implements RdmaEndpointFactory<SendRecvClient.SendRe
 		System.out.println("SendRecvClient, size " + size + ", loop " + loop + ", recvQueueSize " + recvQueueSize + ", port " + port);
 
 		SendRecvClient.SendRecvEndpoint endpoint = group.createEndpoint();
- 		InetAddress ipAddress = InetAddress.getByName(host);
- 		InetSocketAddress address = new InetSocketAddress(ipAddress, port);		
+		InetAddress ipAddress = InetAddress.getByName(host);
+		InetSocketAddress address = new InetSocketAddress(ipAddress, port);
 		endpoint.connect(address, 1000);
 		System.out.println("SendRecvClient, client connected, address " + host + ", port " + 1919);
 
@@ -92,7 +92,7 @@ public class SendRecvClient implements RdmaEndpointFactory<SendRecvClient.SendRe
 		double _seconds = _duration / 1000 / 1000 / 1000;
 		double iops = _ops / _seconds;
 		System.out.println("iops " + iops);
-
+		System.out.println("Bidirectional average latency: " + duration  / (1e6 * loop) + " ms");
 
 		//close everything
 		endpoint.close();
